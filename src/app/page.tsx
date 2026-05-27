@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const HERO_IMAGE =
-  "https://media.cnn.com/api/v1/images/stellar/prod/221219105607-messi-crowd-world-cup-121822.jpg?q=w_3000,c_fill";
+  "https://d3i6fh83elv35t.cloudfront.net/static/2022/12/2022-12-03T214056Z_478945793_UP1EIC31INQ10_RTRMADP_3_SOCCER-WORLDCUP-ARG-AUS-REPORT-1024x621.jpg";
 
 const INTER_LOGO =
   "https://www.interappsap.co/images/logo.png";
