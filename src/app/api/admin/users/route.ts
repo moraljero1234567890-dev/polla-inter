@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isAdminRequest } from "@/lib/admin-auth";
-import { createUser, listAllUsers } from "@/lib/store";
+import { createUser, deleteUser, listAllUsers, updateUserAttempts } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +78,75 @@ export async function POST(request: NextRequest) {
         createdAt: user.createdAt,
       },
     });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Database error";
+    return NextResponse.json(
+      { error: "Database error", detail: msg },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  let body: { email?: string; attemptsAllowed?: number };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  }
+  const email = (body.email ?? "").trim().toLowerCase();
+  const attemptsAllowed = Number(body.attemptsAllowed);
+  if (!email) {
+    return NextResponse.json({ error: "Missing email" }, { status: 400 });
+  }
+  if (
+    !Number.isFinite(attemptsAllowed) ||
+    attemptsAllowed < 1 ||
+    attemptsAllowed > 20
+  ) {
+    return NextResponse.json(
+      { error: "attemptsAllowed must be between 1 and 20" },
+      { status: 400 },
+    );
+  }
+  try {
+    const ok = await updateUserAttempts(email, attemptsAllowed);
+    if (!ok) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Database error";
+    return NextResponse.json(
+      { error: "Database error", detail: msg },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  if (!isAdminRequest(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  let body: { email?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+  }
+  const email = (body.email ?? "").trim().toLowerCase();
+  if (!email) {
+    return NextResponse.json({ error: "Missing email" }, { status: 400 });
+  }
+  try {
+    const ok = await deleteUser(email);
+    if (!ok) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Database error";
     return NextResponse.json(

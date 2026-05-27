@@ -74,6 +74,28 @@ export async function createUser(input: {
   return doc;
 }
 
+export async function deleteUser(email: string): Promise<boolean> {
+  const col = await usersCollection();
+  const result = await col.deleteOne({ email: email.trim().toLowerCase() });
+  if (result.deletedCount > 0) {
+    const pred = await predictionsCollection();
+    await pred.deleteMany({ userEmail: email.trim().toLowerCase() });
+  }
+  return result.deletedCount > 0;
+}
+
+export async function updateUserAttempts(
+  email: string,
+  attemptsAllowed: number,
+): Promise<boolean> {
+  const col = await usersCollection();
+  const result = await col.updateOne(
+    { email: email.trim().toLowerCase() },
+    { $set: { attemptsAllowed: Math.max(1, Math.min(20, Math.floor(attemptsAllowed))) } },
+  );
+  return result.modifiedCount > 0;
+}
+
 export async function getUserByEmail(email: string): Promise<UserDoc | null> {
   const col = await usersCollection();
   return col.findOne({ email: email.trim().toLowerCase() });

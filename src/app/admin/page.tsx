@@ -244,6 +244,60 @@ export default function AdminPage() {
     }
   }
 
+  async function handleDeleteUser(userEmail: string) {
+    if (!savedToken) return;
+    if (!confirm(`¿Eliminar al usuario ${userEmail} y todas sus boletas?`)) return;
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "DELETE",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${savedToken}`,
+        },
+        body: JSON.stringify({ email: userEmail }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setBanner({ kind: "err", text: data.error ?? `Error ${res.status}` });
+        return;
+      }
+      setBanner({ kind: "ok", text: `Usuario "${userEmail}" eliminado.` });
+      await loadUsers(savedToken);
+    } catch (err) {
+      setBanner({ kind: "err", text: err instanceof Error ? err.message : "Error desconocido" });
+    }
+  }
+
+  async function handleUpdateAttempts(userEmail: string, current: number) {
+    if (!savedToken) return;
+    const raw = prompt(`Intentos permitidos para ${userEmail} (1–20):`, String(current));
+    if (raw == null) return;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 1 || n > 20) {
+      setBanner({ kind: "err", text: "Valor inválido. Debe ser entre 1 y 20." });
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${savedToken}`,
+        },
+        body: JSON.stringify({ email: userEmail, attemptsAllowed: n }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setBanner({ kind: "err", text: data.error ?? `Error ${res.status}` });
+        return;
+      }
+      setBanner({ kind: "ok", text: `Intentos de "${userEmail}" actualizados a ${n}.` });
+      await loadUsers(savedToken);
+    } catch (err) {
+      setBanner({ kind: "err", text: err instanceof Error ? err.message : "Error desconocido" });
+    }
+  }
+
   async function handleRefreshMatches() {
     if (!savedToken) {
       setBanner({ kind: "err", text: "Guarda primero tu token de admin." });
@@ -456,18 +510,30 @@ export default function AdminPage() {
               {users.map((u) => (
                 <li
                   key={u.email}
-                  className="grid grid-cols-1 gap-2 py-3 md:grid-cols-[1.4fr_auto] md:items-center"
+                  className="flex flex-wrap items-center gap-3 py-3"
                 >
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">{u.name}</p>
                     <p className="font-mono text-xs text-[var(--foreground-muted)]">
                       {u.email}
                     </p>
                   </div>
-                  <span className="inline-flex w-fit items-center gap-2 border border-[var(--foreground)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateAttempts(u.email, u.attemptsAllowed)}
+                    className="inline-flex items-center gap-2 border border-[var(--foreground)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                  >
                     {u.attemptsAllowed} intento
                     {u.attemptsAllowed === 1 ? "" : "s"}
-                  </span>
+                    <span className="text-[var(--foreground-muted)]">editar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteUser(u.email)}
+                    className="inline-flex items-center border border-red-300 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-red-600 transition hover:bg-red-50"
+                  >
+                    Eliminar
+                  </button>
                 </li>
               ))}
             </ul>

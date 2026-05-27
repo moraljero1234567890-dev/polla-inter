@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { seedUsers } from "@/data/users";
 import { writeSession } from "@/lib/session";
 
 const HERO_IMAGE =
@@ -62,13 +61,6 @@ export default function LoginPage() {
       setError("No pudimos validar tu sesión. Intenta de nuevo.");
       setSubmitting(false);
     }
-  }
-
-  function fillDemo() {
-    const demo = seedUsers[0];
-    setEmail(demo.email);
-    setPassword(demo.password);
-    setError(null);
   }
 
   return (
@@ -232,44 +224,6 @@ export default function LoginPage() {
                 {submitting ? "Entrando…" : "Iniciar sesión"}
               </button>
             </form>
-
-            <div className="mt-8 border-l-4 border-[var(--brand)] bg-[var(--brand-soft)] p-5 text-sm">
-              <div className="flex items-baseline justify-between">
-                <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.3em] text-[var(--brand-dark)]">
-                  Cuenta de prueba
-                </p>
-                <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--brand-dark)]/70">
-                  Demo
-                </span>
-              </div>
-              <dl className="mt-3 space-y-1 text-[var(--brand-dark)]">
-                <div className="flex gap-2">
-                  <dt className="w-20 text-xs uppercase tracking-wider opacity-70">
-                    Correo
-                  </dt>
-                  <dd className="font-mono text-sm">
-                    {seedUsers[0].email}
-                  </dd>
-                </div>
-                <div className="flex gap-2">
-                  <dt className="w-20 text-xs uppercase tracking-wider opacity-70">
-                    Contraseña
-                  </dt>
-                  <dd className="font-mono text-sm">
-                    {seedUsers[0].password}
-                  </dd>
-                </div>
-              </dl>
-              <button
-                type="button"
-                onClick={fillDemo}
-                className="mt-4 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[var(--brand-dark)] underline-offset-4 hover:underline"
-              >
-                Usar esta cuenta
-                <span aria-hidden="true">→</span>
-              </button>
-            </div>
-
           </div>
         </div>
       </main>
