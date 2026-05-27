@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RedirectIfLoggedIn } from "@/lib/auth-redirect";
 
 const HERO_IMAGE =
   "https://d3i6fh83elv35t.cloudfront.net/static/2022/12/2022-12-03T214056Z_478945793_UP1EIC31INQ10_RTRMADP_3_SOCCER-WORLDCUP-ARG-AUS-REPORT-1024x621.jpg";
@@ -56,6 +57,7 @@ function PitchMarkings() {
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-[var(--background)] text-[var(--foreground)]">
+      <RedirectIfLoggedIn />
       <header className="sticky top-0 z-30 border-b border-[var(--line)] bg-[var(--background)]/95 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-3">

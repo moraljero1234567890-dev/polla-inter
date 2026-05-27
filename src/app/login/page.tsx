@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { writeSession } from "@/lib/session";
+import { useEffect, useState } from "react";
+import { readSession, writeSession } from "@/lib/session";
 
 const HERO_IMAGE =
   "https://media.cnn.com/api/v1/images/stellar/prod/221219105607-messi-crowd-world-cup-121822.jpg?q=w_3000,c_fill";
@@ -13,6 +13,11 @@ const INTER_LOGO =
 
 export default function LoginPage() {
   const router = useRouter();
+
+  useEffect(() => {
+    if (readSession()) router.replace("/dashboard");
+  }, [router]);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
