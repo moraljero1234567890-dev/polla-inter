@@ -41,15 +41,12 @@ async function handleRefresh(): Promise<Response> {
   }
 
   const col = await matchesCollection();
-  let upserts = 0;
-  for (const d of provider.docs) {
-    await col.replaceOne({ _id: d._id }, d, { upsert: true });
-    upserts++;
-  }
+  await col.deleteMany({});
+  await col.insertMany(provider.docs);
   await col.createIndex({ utcDate: 1 });
   await col.createIndex({ stage: 1, group: 1, matchday: 1 });
 
-  return NextResponse.json({ source: provider.source, upserts });
+  return NextResponse.json({ source: provider.source, upserts: provider.docs.length });
 }
 
 export async function POST(request: NextRequest) {

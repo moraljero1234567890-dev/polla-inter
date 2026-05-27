@@ -4,7 +4,6 @@ import {
   predictionsCollection,
   usersCollection,
 } from "./mongodb";
-import { fetchLatestFromConfiguredProvider } from "./providers";
 import { buildMatchSeed } from "./seed-data";
 import type { MatchDoc, PredictionDoc, UserDoc } from "./types";
 
@@ -12,14 +11,7 @@ async function ensureMatchesSeeded(): Promise<void> {
   const col = await matchesCollection();
   const count = await col.estimatedDocumentCount();
   if (count > 0) return;
-  let docs: MatchDoc[] = [];
-  try {
-    const result = await fetchLatestFromConfiguredProvider();
-    docs = result.docs;
-  } catch (err) {
-    console.warn("Failed to fetch from provider, using static seed:", err);
-  }
-  if (docs.length === 0) docs = buildMatchSeed();
+  const docs = buildMatchSeed();
   if (docs.length === 0) return;
   await col.insertMany(docs);
   await col.createIndex({ utcDate: 1 });
