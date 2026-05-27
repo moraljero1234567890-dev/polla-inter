@@ -13,7 +13,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       users: users.map((u) => ({
         email: u.email,
-        nit: u.nit,
         name: u.name,
         attemptsAllowed: u.attemptsAllowed,
         createdAt: u.createdAt,
@@ -34,7 +33,7 @@ export async function POST(request: NextRequest) {
   }
   let body: {
     email?: string;
-    nit?: string;
+    password?: string;
     name?: string;
     attemptsAllowed?: number;
   };
@@ -44,15 +43,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
   const email = (body.email ?? "").trim().toLowerCase();
-  const nit = (body.nit ?? "").replace(/\D/g, "");
+  const password = (body.password ?? "").trim();
   const name = (body.name ?? "").trim();
   const attemptsAllowed = Number(body.attemptsAllowed);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return NextResponse.json({ error: "Invalid email" }, { status: 400 });
   }
-  if (nit.length < 6) {
+  if (password.length < 6) {
     return NextResponse.json(
-      { error: "NIT must be at least 6 digits" },
+      { error: "Password must be at least 6 characters" },
       { status: 400 },
     );
   }
@@ -70,11 +69,10 @@ export async function POST(request: NextRequest) {
     );
   }
   try {
-    const user = await createUser({ email, nit, name, attemptsAllowed });
+    const user = await createUser({ email, password, name, attemptsAllowed });
     return NextResponse.json({
       user: {
         email: user.email,
-        nit: user.nit,
         name: user.name,
         attemptsAllowed: user.attemptsAllowed,
         createdAt: user.createdAt,

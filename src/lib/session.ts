@@ -2,7 +2,6 @@
 
 export type Session = {
   email: string;
-  nit: string;
   name: string;
   attemptsAllowed: number;
   ts: number;
@@ -18,14 +17,12 @@ export function readSession(): Session | null {
     const parsed = JSON.parse(raw) as Partial<Session>;
     if (
       typeof parsed.email !== "string" ||
-      typeof parsed.nit !== "string" ||
       typeof parsed.name !== "string"
     ) {
       return null;
     }
     return {
       email: parsed.email,
-      nit: parsed.nit,
       name: parsed.name,
       attemptsAllowed:
         typeof parsed.attemptsAllowed === "number"

@@ -15,7 +15,7 @@ const INTER_LOGO =
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [nit, setNit] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -24,14 +24,14 @@ export default function LoginPage() {
     setError(null);
 
     const trimmedEmail = email.trim();
-    const cleanNit = nit.replace(/\D/g, "");
+    const trimmedPw = password.trim();
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       setError("Ingresa un correo válido.");
       return;
     }
-    if (cleanNit.length < 6) {
-      setError("El NIT debe tener al menos 6 dígitos, sin puntos ni guiones.");
+    if (trimmedPw.length < 6) {
+      setError("La contraseña debe tener al menos 6 caracteres.");
       return;
     }
 
@@ -40,7 +40,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail, nit: cleanNit }),
+        body: JSON.stringify({ email: trimmedEmail, password: trimmedPw }),
       });
       if (!res.ok) {
         setError(
@@ -52,7 +52,6 @@ export default function LoginPage() {
       const data = (await res.json()) as {
         user: {
           email: string;
-          nit: string;
           name: string;
           attemptsAllowed: number;
         };
@@ -68,7 +67,7 @@ export default function LoginPage() {
   function fillDemo() {
     const demo = seedUsers[0];
     setEmail(demo.email);
-    setNit(demo.nit);
+    setPassword(demo.password);
     setError(null);
   }
 
@@ -132,8 +131,7 @@ export default function LoginPage() {
               pronósticos.
             </h2>
             <p className="mt-5 text-white/75">
-              Ingresa con el correo y NIT que te fueron asignados para
-              participar en la polla.
+              Ingresa con el correo y contraseña que te fueron asignados.
             </p>
           </div>
 
@@ -199,27 +197,21 @@ export default function LoginPage() {
 
               <div>
                 <label
-                  htmlFor="nit"
-                  className="flex items-baseline justify-between font-mono text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--foreground-muted)]"
+                  htmlFor="password"
+                  className="font-mono text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--foreground-muted)]"
                 >
-                  <span>NIT</span>
-                  <span className="text-[10px] tracking-[0.2em]">
-                    sin puntos
-                  </span>
+                  Contraseña
                 </label>
                 <input
-                  id="nit"
-                  name="nit"
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="off"
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
                   required
-                  value={nit}
-                  onChange={(e) =>
-                    setNit(e.target.value.replace(/[^0-9-]/g, ""))
-                  }
-                  placeholder="9001234567"
-                  className="mt-2 h-12 w-full border border-[var(--line)] bg-white px-4 font-mono text-base tabular-nums text-[var(--foreground)] outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/20"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Tu contraseña"
+                  className="mt-2 h-12 w-full border border-[var(--line)] bg-white px-4 text-base text-[var(--foreground)] outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/20"
                 />
               </div>
 
@@ -252,7 +244,7 @@ export default function LoginPage() {
               </div>
               <dl className="mt-3 space-y-1 text-[var(--brand-dark)]">
                 <div className="flex gap-2">
-                  <dt className="w-16 text-xs uppercase tracking-wider opacity-70">
+                  <dt className="w-20 text-xs uppercase tracking-wider opacity-70">
                     Correo
                   </dt>
                   <dd className="font-mono text-sm">
@@ -260,11 +252,11 @@ export default function LoginPage() {
                   </dd>
                 </div>
                 <div className="flex gap-2">
-                  <dt className="w-16 text-xs uppercase tracking-wider opacity-70">
-                    NIT
+                  <dt className="w-20 text-xs uppercase tracking-wider opacity-70">
+                    Contraseña
                   </dt>
-                  <dd className="font-mono text-sm tabular-nums">
-                    {seedUsers[0].nit}
+                  <dd className="font-mono text-sm">
+                    {seedUsers[0].password}
                   </dd>
                 </div>
               </dl>

@@ -10,7 +10,6 @@ const TOKEN_KEY = "polla-inter:admin-token";
 
 type AdminUser = {
   email: string;
-  nit: string;
   name: string;
   attemptsAllowed: number;
   createdAt: string | Date;
@@ -65,7 +64,7 @@ export default function AdminPage() {
   const [banner, setBanner] = useState<Banner>(null);
 
   const [email, setEmail] = useState("");
-  const [nit, setNit] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [attempts, setAttempts] = useState("1");
   const [creating, setCreating] = useState(false);
@@ -184,15 +183,15 @@ export default function AdminPage() {
       return;
     }
     const cleanEmail = email.trim().toLowerCase();
-    const cleanNit = nit.replace(/\D/g, "");
+    const cleanPw = password.trim();
     const cleanName = name.trim();
     const n = Number(attempts);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setBanner({ kind: "err", text: "Correo inválido." });
       return;
     }
-    if (cleanNit.length < 6) {
-      setBanner({ kind: "err", text: "El NIT debe tener al menos 6 dígitos." });
+    if (cleanPw.length < 6) {
+      setBanner({ kind: "err", text: "La contraseña debe tener al menos 6 caracteres." });
       return;
     }
     if (!cleanName) {
@@ -213,7 +212,7 @@ export default function AdminPage() {
         },
         body: JSON.stringify({
           email: cleanEmail,
-          nit: cleanNit,
+          password: cleanPw,
           name: cleanName,
           attemptsAllowed: n,
         }),
@@ -231,7 +230,7 @@ export default function AdminPage() {
         text: `Usuario "${cleanEmail}" creado con ${n} intento${n === 1 ? "" : "s"}.`,
       });
       setEmail("");
-      setNit("");
+      setPassword("");
       setName("");
       setAttempts("1");
       await loadUsers(savedToken);
@@ -380,22 +379,21 @@ export default function AdminPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="cliente@ejemplo.com"
+                placeholder="usuario@ejemplo.com"
                 className="mt-1 h-11 w-full border border-[var(--line)] bg-white px-3 outline-none focus:border-[var(--brand)]"
                 required
               />
             </label>
             <label className="block">
               <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
-                NIT (sin puntos)
+                Contraseña
               </span>
               <input
                 type="text"
-                inputMode="numeric"
-                value={nit}
-                onChange={(e) => setNit(e.target.value.replace(/[^0-9]/g, ""))}
-                placeholder="9001234567"
-                className="mt-1 h-11 w-full border border-[var(--line)] bg-white px-3 font-mono tabular-nums outline-none focus:border-[var(--brand)]"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="min. 6 caracteres"
+                className="mt-1 h-11 w-full border border-[var(--line)] bg-white px-3 outline-none focus:border-[var(--brand)]"
                 required
               />
             </label>
@@ -407,7 +405,7 @@ export default function AdminPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Cliente Ejemplo"
+                placeholder="Juan Pérez"
                 className="mt-1 h-11 w-full border border-[var(--line)] bg-white px-3 outline-none focus:border-[var(--brand)]"
                 required
               />
@@ -458,7 +456,7 @@ export default function AdminPage() {
               {users.map((u) => (
                 <li
                   key={u.email}
-                  className="grid grid-cols-1 gap-2 py-3 md:grid-cols-[1.4fr_1fr_auto] md:items-center"
+                  className="grid grid-cols-1 gap-2 py-3 md:grid-cols-[1.4fr_auto] md:items-center"
                 >
                   <div>
                     <p className="text-sm font-semibold">{u.name}</p>
@@ -466,9 +464,6 @@ export default function AdminPage() {
                       {u.email}
                     </p>
                   </div>
-                  <p className="font-mono text-xs text-[var(--foreground-soft)]">
-                    NIT {u.nit}
-                  </p>
                   <span className="inline-flex w-fit items-center gap-2 border border-[var(--foreground)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em]">
                     {u.attemptsAllowed} intento
                     {u.attemptsAllowed === 1 ? "" : "s"}

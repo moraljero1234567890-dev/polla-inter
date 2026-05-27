@@ -14,7 +14,11 @@ function getClientPromise(): Promise<MongoClient> {
       "Missing MONGODB_URI. Set it in your environment (Vercel) before calling the API.",
     );
   }
-  global._mongoClientPromise = new MongoClient(uri).connect();
+  const client = new MongoClient(uri, {
+    tls: true,
+    tlsAllowInvalidCertificates: true,
+  });
+  global._mongoClientPromise = client.connect();
   return global._mongoClientPromise;
 }
 

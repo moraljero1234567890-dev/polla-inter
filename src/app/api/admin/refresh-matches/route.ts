@@ -5,6 +5,10 @@ import { fetchLatestFromConfiguredProvider } from "@/lib/providers";
 export const dynamic = "force-dynamic";
 
 function authorized(request: NextRequest): boolean {
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && request.headers.get("authorization") === `Bearer ${cronSecret}`) {
+    return true;
+  }
   const expected = process.env.ADMIN_TOKEN;
   if (!expected) return false;
   const got =

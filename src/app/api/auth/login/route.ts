@@ -4,7 +4,7 @@ import { findUserByCredentials } from "@/lib/store";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  let body: { email?: string; nit?: string };
+  let body: { email?: string; password?: string };
   try {
     body = await request.json();
   } catch {
@@ -12,20 +12,19 @@ export async function POST(request: Request) {
   }
 
   const email = (body.email ?? "").trim().toLowerCase();
-  const nit = (body.nit ?? "").replace(/\D/g, "");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || nit.length < 6) {
+  const password = (body.password ?? "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 400 });
   }
 
   try {
-    const user = await findUserByCredentials(email, nit);
+    const user = await findUserByCredentials(email, password);
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 401 });
     }
     return NextResponse.json({
       user: {
         email: user.email,
-        nit: user.nit,
         name: user.name,
         attemptsAllowed: user.attemptsAllowed,
       },

@@ -39,12 +39,12 @@ export async function getAllMatches(): Promise<MatchDoc[]> {
 
 export async function findUserByCredentials(
   email: string,
-  nit: string,
+  password: string,
 ): Promise<UserDoc | null> {
   const col = await usersCollection();
   const cleanEmail = email.trim().toLowerCase();
-  const cleanNit = nit.replace(/\D/g, "");
-  return col.findOne({ email: cleanEmail, nit: cleanNit });
+  const cleanPw = password.trim();
+  return col.findOne({ email: cleanEmail, password: cleanPw });
 }
 
 export async function listAllUsers(): Promise<UserDoc[]> {
@@ -54,18 +54,18 @@ export async function listAllUsers(): Promise<UserDoc[]> {
 
 export async function createUser(input: {
   email: string;
-  nit: string;
+  password: string;
   name: string;
   attemptsAllowed: number;
 }): Promise<UserDoc> {
   await ensureUsersIndex();
   const col = await usersCollection();
   const email = input.email.trim().toLowerCase();
-  const nit = input.nit.replace(/\D/g, "");
+  const password = input.password.trim();
   const doc: UserDoc = {
     _id: email,
     email,
-    nit,
+    password,
     name: input.name.trim(),
     attemptsAllowed: Math.max(1, Math.min(20, Math.floor(input.attemptsAllowed))),
     createdAt: new Date(),

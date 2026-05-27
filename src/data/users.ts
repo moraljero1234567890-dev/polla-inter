@@ -1,33 +1,23 @@
 export type SeedUser = {
   email: string;
-  nit: string;
+  password: string;
   name: string;
 };
 
 export const seedUsers: SeedUser[] = [
   {
-    email: "userad@example.com",
-    nit: "1234567890",
-    name: "Cliente Demo",
-  },
-  {
     email: "demo@grupointer.com",
-    nit: "9001234567",
-    name: "Demo Grupo Inter",
-  },
-  {
-    email: "asesor@grupointer.com",
-    nit: "8001112223",
-    name: "Asesor Inter",
+    password: "inter2026",
+    name: "Usuario Demo",
   },
 ];
 
-export function findUser(email: string, nit: string): SeedUser | null {
+export function findUser(email: string, password: string): SeedUser | null {
   const e = email.trim().toLowerCase();
-  const n = nit.replace(/\D/g, "");
+  const p = password.trim();
   return (
     seedUsers.find(
-      (u) => u.email.toLowerCase() === e && u.nit === n,
+      (u) => u.email.toLowerCase() === e && u.password === p,
     ) ?? null
   );
 }

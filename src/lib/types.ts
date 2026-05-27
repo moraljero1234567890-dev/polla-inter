@@ -44,7 +44,7 @@ export type MatchDoc = {
 export type UserDoc = {
   _id: string;
   email: string;
-  nit: string;
+  password: string;
   name: string;
   attemptsAllowed: number;
   createdAt: Date;

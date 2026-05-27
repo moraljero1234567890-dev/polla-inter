@@ -38,9 +38,9 @@ export function buildUserSeed(): UserDoc[] {
   return seedUsers.map((u) => ({
     _id: u.email.toLowerCase(),
     email: u.email.toLowerCase(),
-    nit: u.nit,
+    password: u.password,
     name: u.name,
-    attemptsAllowed: u.email === "asesor@grupointer.com" ? 3 : 1,
+    attemptsAllowed: 1,
     createdAt: now,
   }));
 }
