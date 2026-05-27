@@ -1,0 +1,286 @@
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { seedUsers } from "@/data/users";
+import { writeSession } from "@/lib/session";
+
+const HERO_IMAGE =
+  "https://media.cnn.com/api/v1/images/stellar/prod/221219105607-messi-crowd-world-cup-121822.jpg?q=w_3000,c_fill";
+
+const INTER_LOGO =
+  "https://www.interappsap.co/images/logo.png";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [nit, setNit] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+
+    const trimmedEmail = email.trim();
+    const cleanNit = nit.replace(/\D/g, "");
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Ingresa un correo válido.");
+      return;
+    }
+    if (cleanNit.length < 6) {
+      setError("El NIT debe tener al menos 6 dígitos, sin puntos ni guiones.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail, nit: cleanNit }),
+      });
+      if (!res.ok) {
+        setError(
+          "No encontramos una cuenta con esas credenciales. Verifica tus datos e intenta de nuevo.",
+        );
+        setSubmitting(false);
+        return;
+      }
+      const data = (await res.json()) as {
+        user: {
+          email: string;
+          nit: string;
+          name: string;
+          attemptsAllowed: number;
+        };
+      };
+      writeSession(data.user);
+      router.push("/dashboard");
+    } catch {
+      setError("No pudimos validar tu sesión. Intenta de nuevo.");
+      setSubmitting(false);
+    }
+  }
+
+  function fillDemo() {
+    const demo = seedUsers[0];
+    setEmail(demo.email);
+    setNit(demo.nit);
+    setError(null);
+  }
+
+  return (
+    <div className="grid min-h-screen lg:grid-cols-[1.05fr_0.95fr]">
+      {/* Visual panel */}
+      <aside className="relative isolate hidden overflow-hidden bg-[var(--foreground)] text-white lg:block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={HERO_IMAGE}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 h-full w-full object-cover opacity-50"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 bg-gradient-to-b from-[var(--foreground)]/65 via-[var(--foreground)]/55 to-[var(--foreground)]"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_bottom_left,rgba(208,19,23,0.3),transparent_55%)]"
+        />
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 h-full w-full text-white/15"
+          preserveAspectRatio="xMidYMid slice"
+          viewBox="0 0 1600 900"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <line x1="800" y1="0" x2="800" y2="900" />
+          <circle cx="800" cy="450" r="120" />
+          <circle cx="800" cy="450" r="3" fill="currentColor" stroke="none" />
+          <rect x="0" y="280" width="160" height="340" />
+          <rect x="1440" y="280" width="160" height="340" />
+        </svg>
+
+        <div className="relative flex h-full flex-col justify-between p-10">
+          <Link href="/" className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={INTER_LOGO}
+              alt="Grupo Inter"
+              className="h-8 w-auto brightness-0 invert"
+            />
+            <span className="h-6 w-px bg-white/30" />
+            <span className="text-sm font-semibold tracking-wide">
+              Polla Mundialista
+            </span>
+          </Link>
+
+          <div className="max-w-md">
+            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-[var(--brand)]">
+              Acceso · Edición Mundial 2026
+            </p>
+            <h2 className="mt-5 text-4xl font-black uppercase leading-[0.95] tracking-tight md:text-5xl">
+              Entra a tu
+              <br />
+              <span className="text-[var(--brand)]">boleta</span> de
+              pronósticos.
+            </h2>
+            <p className="mt-5 text-white/75">
+              Ingresa con el correo y NIT que te fueron asignados para
+              participar en la polla.
+            </p>
+          </div>
+
+          <div className="inline-flex w-fit items-center gap-3 border border-white/15 bg-black/30 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.28em] text-white/70 backdrop-blur">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--brand)]" />
+            FIFA World Cup · 2026
+          </div>
+        </div>
+      </aside>
+
+      {/* Form panel */}
+      <main className="flex flex-col bg-[var(--background)]">
+        <header className="flex items-center justify-between border-b border-[var(--line)] px-6 py-4 lg:hidden">
+          <Link href="/" className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={INTER_LOGO} alt="Grupo Inter" className="h-8 w-auto" />
+            <span className="text-sm font-semibold">Polla Mundialista</span>
+          </Link>
+          <Link
+            href="/"
+            className="text-sm font-medium text-[var(--foreground-soft)] hover:text-[var(--brand)]"
+          >
+            Volver
+          </Link>
+        </header>
+
+        <div className="flex flex-1 items-center justify-center px-6 py-16 lg:px-16">
+          <div className="w-full max-w-md">
+            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-[var(--brand)]">
+              Iniciar sesión
+            </p>
+            <h1 className="mt-3 text-3xl font-black leading-tight md:text-4xl">
+              Bienvenido de vuelta.
+            </h1>
+            <p className="mt-3 text-[var(--foreground-soft)]">
+              Usa tus credenciales para entrar.
+            </p>
+
+            <form
+              onSubmit={handleSubmit}
+              className="mt-10 space-y-5"
+              noValidate
+            >
+              <div>
+                <label
+                  htmlFor="email"
+                  className="font-mono text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--foreground-muted)]"
+                >
+                  Correo electrónico
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tucorreo@ejemplo.com"
+                  className="mt-2 h-12 w-full border border-[var(--line)] bg-white px-4 text-base text-[var(--foreground)] outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/20"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="nit"
+                  className="flex items-baseline justify-between font-mono text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--foreground-muted)]"
+                >
+                  <span>NIT</span>
+                  <span className="text-[10px] tracking-[0.2em]">
+                    sin puntos
+                  </span>
+                </label>
+                <input
+                  id="nit"
+                  name="nit"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  required
+                  value={nit}
+                  onChange={(e) =>
+                    setNit(e.target.value.replace(/[^0-9-]/g, ""))
+                  }
+                  placeholder="9001234567"
+                  className="mt-2 h-12 w-full border border-[var(--line)] bg-white px-4 font-mono text-base tabular-nums text-[var(--foreground)] outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/20"
+                />
+              </div>
+
+              {error && (
+                <div
+                  role="alert"
+                  className="border-l-4 border-[var(--brand)] bg-[var(--brand-soft)] px-4 py-3 text-sm text-[var(--brand-dark)]"
+                >
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="inline-flex h-12 w-full items-center justify-center rounded-sm bg-[var(--brand)] px-6 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {submitting ? "Entrando…" : "Iniciar sesión"}
+              </button>
+            </form>
+
+            <div className="mt-8 border-l-4 border-[var(--brand)] bg-[var(--brand-soft)] p-5 text-sm">
+              <div className="flex items-baseline justify-between">
+                <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.3em] text-[var(--brand-dark)]">
+                  Cuenta de prueba
+                </p>
+                <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--brand-dark)]/70">
+                  Demo
+                </span>
+              </div>
+              <dl className="mt-3 space-y-1 text-[var(--brand-dark)]">
+                <div className="flex gap-2">
+                  <dt className="w-16 text-xs uppercase tracking-wider opacity-70">
+                    Correo
+                  </dt>
+                  <dd className="font-mono text-sm">
+                    {seedUsers[0].email}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="w-16 text-xs uppercase tracking-wider opacity-70">
+                    NIT
+                  </dt>
+                  <dd className="font-mono text-sm tabular-nums">
+                    {seedUsers[0].nit}
+                  </dd>
+                </div>
+              </dl>
+              <button
+                type="button"
+                onClick={fillDemo}
+                className="mt-4 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[var(--brand-dark)] underline-offset-4 hover:underline"
+              >
+                Usar esta cuenta
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
