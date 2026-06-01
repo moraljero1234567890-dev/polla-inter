@@ -11,6 +11,13 @@ const HERO_IMAGE =
 const INTER_LOGO =
   "https://www.interappsap.co/images/logo.png";
 
+const INSCRIPTION_VALUE = "$100.000";
+const CONTACT_EMAIL = "mmartinez@grupointer.co";
+const CONTACT_WHATSAPP = "322 728 9923";
+const CONTACT_WHATSAPP_LINK = "https://wa.me/573227289923";
+const BANK_NAME = "Ahorros Bancolombia";
+const BANK_ACCOUNT = "29856763593";
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -130,6 +137,45 @@ export default function LoginPage() {
             <p className="mt-5 text-white/75">
               Ingresa con el correo y contraseña que te fueron asignados.
             </p>
+
+            <div className="mt-8 border border-white/15 bg-black/30 p-5 backdrop-blur">
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--brand)]">
+                ¿Aún no tienes cuenta?
+              </p>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-sm text-white/70">Inscripción</span>
+                <span className="text-2xl font-black tabular-nums">
+                  {INSCRIPTION_VALUE}
+                </span>
+              </div>
+              <p className="mt-3 text-sm text-white/75">
+                Escribe a{" "}
+                <a
+                  href={`mailto:${CONTACT_EMAIL}`}
+                  className="font-semibold text-white underline-offset-2 hover:underline"
+                >
+                  {CONTACT_EMAIL}
+                </a>{" "}
+                o por WhatsApp al{" "}
+                <a
+                  href={CONTACT_WHATSAPP_LINK}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-white underline-offset-2 hover:underline"
+                >
+                  {CONTACT_WHATSAPP}
+                </a>
+                .
+              </p>
+              <p className="mt-2 text-sm text-white/75">
+                Envía tus datos y comprobante de pago a{" "}
+                <span className="font-semibold text-white">{BANK_NAME}</span>{" "}
+                <span className="font-mono font-semibold text-white">
+                  {BANK_ACCOUNT}
+                </span>{" "}
+                y recibirás un link para empezar a sumar puntos.
+              </p>
+            </div>
           </div>
 
           <div className="inline-flex w-fit items-center gap-3 border border-white/15 bg-black/30 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.28em] text-white/70 backdrop-blur">
@@ -229,6 +275,50 @@ export default function LoginPage() {
                 {submitting ? "Entrando…" : "Iniciar sesión"}
               </button>
             </form>
+
+            {/* Cómo participar — visible en móvil (el panel lateral se oculta) */}
+            <div className="mt-10 border border-[var(--line)] bg-[var(--surface)] p-5 lg:hidden">
+              <p className="font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--brand)]">
+                ¿Aún no tienes cuenta?
+              </p>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-sm text-[var(--foreground-soft)]">
+                  Inscripción
+                </span>
+                <span className="text-2xl font-black tabular-nums text-[var(--foreground)]">
+                  {INSCRIPTION_VALUE}
+                </span>
+              </div>
+              <p className="mt-3 text-sm text-[var(--foreground-soft)]">
+                Escribe a{" "}
+                <a
+                  href={`mailto:${CONTACT_EMAIL}`}
+                  className="font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+                >
+                  {CONTACT_EMAIL}
+                </a>{" "}
+                o por WhatsApp al{" "}
+                <a
+                  href={CONTACT_WHATSAPP_LINK}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+                >
+                  {CONTACT_WHATSAPP}
+                </a>
+                .
+              </p>
+              <p className="mt-2 text-sm text-[var(--foreground-soft)]">
+                Envía tus datos y comprobante de pago a{" "}
+                <span className="font-semibold text-[var(--foreground)]">
+                  {BANK_NAME}
+                </span>{" "}
+                <span className="font-mono font-semibold text-[var(--foreground)]">
+                  {BANK_ACCOUNT}
+                </span>{" "}
+                y recibirás un link para empezar a sumar puntos.
+              </p>
+            </div>
           </div>
         </div>
       </main>

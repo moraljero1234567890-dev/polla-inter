@@ -98,6 +98,12 @@ export default function DashboardPage() {
             </span>
           </Link>
           <div className="flex items-center gap-4">
+            <Link
+              href="/dashboard/leaderboard"
+              className="text-sm font-medium text-[var(--foreground-soft)] hover:text-[var(--brand)]"
+            >
+              Tabla de posiciones
+            </Link>
             <span className="hidden text-sm text-[var(--foreground-soft)] sm:inline">
               {session.name}
             </span>
@@ -125,6 +131,13 @@ export default function DashboardPage() {
               {total === 1 ? "intento disponible" : "intentos disponibles"}.
               Cada boleta debe completarse antes del inicio del Mundial.
             </p>
+            <Link
+              href="/dashboard/leaderboard"
+              className="mt-6 inline-flex h-11 items-center justify-center gap-2 bg-[var(--brand)] px-6 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-[var(--brand-dark)]"
+            >
+              Ver tabla de posiciones
+              <span aria-hidden="true">→</span>
+            </Link>
           </div>
         </section>
 

@@ -32,6 +32,13 @@ const prizeRows = [
   { place: "3er puesto", pct: "15%" },
 ];
 
+const INSCRIPTION_VALUE = "$100.000";
+const CONTACT_EMAIL = "mmartinez@grupointer.co";
+const CONTACT_WHATSAPP = "322 728 9923";
+const CONTACT_WHATSAPP_LINK = "https://wa.me/573227289923";
+const BANK_NAME = "Ahorros Bancolombia";
+const BANK_ACCOUNT = "29856763593";
+
 function PitchMarkings() {
   return (
     <svg
@@ -69,6 +76,12 @@ export default function Home() {
             </span>
           </Link>
           <div className="flex items-center gap-4">
+            <a
+              href="#participar"
+              className="hidden text-sm font-medium text-[var(--foreground-soft)] hover:text-[var(--brand)] md:inline"
+            >
+              Cómo participar
+            </a>
             <a
               href="#puntuacion"
               className="hidden text-sm font-medium text-[var(--foreground-soft)] hover:text-[var(--brand)] md:inline"
@@ -337,6 +350,115 @@ export default function Home() {
                   Empate en eliminatorias requiere definir ganador por penaltis.
                 </li>
               </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* CÓMO PARTICIPAR */}
+        <section id="participar" className="bg-[var(--surface)]">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="max-w-2xl">
+              <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-[var(--brand)]">
+                ¿Crees que sabes de fútbol?
+              </p>
+              <h2 className="mt-4 text-3xl font-black leading-[1.05] md:text-[40px]">
+                Demuestra tus conocimientos.
+                <br />
+                <span className="italic font-light text-[var(--foreground-soft)]">
+                  Compite por increíbles premios.
+                </span>
+              </h2>
+              <p className="mt-5 text-[var(--foreground-soft)]">
+                Acumula puntos con tus marcadores y compite por los premios.
+                Inscríbete, envía tu comprobante de pago y recibirás un link
+                para empezar a pronosticar.
+              </p>
+            </div>
+
+            <div className="mt-12 grid gap-6 md:grid-cols-3">
+              {/* Valor de inscripción */}
+              <div className="flex flex-col border border-[var(--line)] bg-white p-6">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--brand)]">
+                  Valor de inscripción
+                </span>
+                <p className="mt-3 text-4xl font-black tabular-nums text-[var(--foreground)]">
+                  {INSCRIPTION_VALUE}
+                </p>
+                <p className="mt-auto pt-4 text-xs text-[var(--foreground-muted)]">
+                  Pago único por participante.
+                </p>
+              </div>
+
+              {/* Para participar escribe a */}
+              <div className="flex flex-col border border-[var(--line)] bg-white p-6">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--brand)]">
+                  Para participar escribe a
+                </span>
+                <a
+                  href={`mailto:${CONTACT_EMAIL}`}
+                  className="mt-3 block break-all text-lg font-bold text-[var(--foreground)] hover:text-[var(--brand)]"
+                >
+                  {CONTACT_EMAIL}
+                </a>
+                <a
+                  href={CONTACT_WHATSAPP_LINK}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-2 text-base font-semibold text-[var(--foreground)] hover:text-[var(--brand)]"
+                >
+                  <span aria-hidden="true">📱</span> WhatsApp {CONTACT_WHATSAPP}
+                </a>
+                <p className="mt-auto pt-4 text-xs text-[var(--foreground-muted)]">
+                  Envía tus datos y comprobante de pago.
+                </p>
+              </div>
+
+              {/* Pago */}
+              <div className="flex flex-col border border-[var(--line)] bg-white p-6">
+                <span className="font-mono text-[10px] font-bold uppercase tracking-[0.3em] text-[var(--brand)]">
+                  Datos de pago
+                </span>
+                <p className="mt-3 text-lg font-bold text-[var(--foreground)]">
+                  {BANK_NAME}
+                </p>
+                <p className="mt-1 font-mono text-2xl font-black tabular-nums text-[var(--foreground)]">
+                  {BANK_ACCOUNT}
+                </p>
+                <p className="mt-auto pt-4 text-xs text-[var(--foreground-muted)]">
+                  Recibirás un link para ingresar tus marcadores y empezar a
+                  sumar puntos.
+                </p>
+              </div>
+            </div>
+
+            {/* Premios resumen */}
+            <div className="mt-10 border border-[var(--line)] bg-white p-6">
+              <div className="flex items-baseline justify-between border-b border-[var(--line)] pb-3">
+                <h3 className="font-mono text-xs font-bold uppercase tracking-[0.3em] text-[var(--foreground-soft)]">
+                  Premios para los mejores puntajes
+                </h3>
+                <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--foreground-muted)]">
+                  De lo recaudado
+                </span>
+              </div>
+              <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                {prizeRows.map((r) => (
+                  <div
+                    key={r.place}
+                    className="border border-[var(--brand)]/30 bg-[var(--brand-soft)] p-5 text-center"
+                  >
+                    <p className="font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--brand)]">
+                      {r.place}
+                    </p>
+                    <p className="mt-2 text-5xl font-black tabular-nums text-[var(--brand)]">
+                      {r.pct}
+                    </p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-[var(--foreground-muted)]">
+                      De lo recaudado
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
