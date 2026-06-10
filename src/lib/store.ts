@@ -5,7 +5,37 @@ import {
   usersCollection,
 } from "./mongodb";
 import { buildMatchSeed } from "./seed-data";
+import { migratePrediction, KNOCKOUT_BRACKET_VERSION } from "./bracket";
 import type { MatchDoc, PredictionDoc, UserDoc } from "./types";
+
+// Bring any stored predictions onto the current bracket version (intent preserved)
+// and persist the result. Runs at most once per prediction: once stamped, the
+// version check short-circuits and no DB work happens. Returns migrated copies so
+// every read path serves a correct bracket without a manual migration step.
+async function applyMigration(
+  preds: PredictionDoc[],
+): Promise<PredictionDoc[]> {
+  const stale = preds.filter(
+    (p) => p.bracketVersion !== KNOCKOUT_BRACKET_VERSION,
+  );
+  if (stale.length === 0) return preds;
+
+  const groupMatches = (await getAllMatches()).filter(
+    (m) => m.stage === "GROUP_STAGE",
+  );
+  const col = await predictionsCollection();
+  const migrated = new Map<string, PredictionDoc>();
+  for (const p of stale) {
+    const { prediction, changed } = migratePrediction(p, groupMatches);
+    if (changed) {
+      await col.replaceOne({ _id: prediction._id }, prediction, {
+        upsert: true,
+      });
+    }
+    migrated.set(p._id, prediction);
+  }
+  return preds.map((p) => migrated.get(p._id) ?? p);
+}
 
 async function ensureMatchesSeeded(): Promise<void> {
   const col = await matchesCollection();
@@ -97,15 +127,17 @@ export async function listPredictionsForUser(
   email: string,
 ): Promise<PredictionDoc[]> {
   const col = await predictionsCollection();
-  return col
+  const preds = await col
     .find({ userEmail: email.trim().toLowerCase() })
     .sort({ attempt: 1 })
     .toArray();
+  return applyMigration(preds);
 }
 
 export async function listAllPredictions(): Promise<PredictionDoc[]> {
   const col = await predictionsCollection();
-  return col.find({}).toArray();
+  const preds = await col.find({}).toArray();
+  return applyMigration(preds);
 }
 
 export async function getPrediction(
@@ -113,10 +145,13 @@ export async function getPrediction(
   attempt: number,
 ): Promise<PredictionDoc | null> {
   const col = await predictionsCollection();
-  return col.findOne({
+  const pred = await col.findOne({
     userEmail: email.trim().toLowerCase(),
     attempt,
   });
+  if (!pred) return null;
+  const [migrated] = await applyMigration([pred]);
+  return migrated;
 }
 
 export async function upsertPrediction(doc: PredictionDoc): Promise<void> {

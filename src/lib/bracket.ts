@@ -504,6 +504,47 @@ export function smartCarryOverKnockout(
   return { r32, r16, qf, sf, third, final };
 }
 
+// Bump whenever the bracket structure changes so stored predictions re-migrate.
+// v2 = official FIFA 2026 Round of 32 layout + per-slot third-place assignment.
+export const KNOCKOUT_BRACKET_VERSION = 2;
+
+// One-time, idempotent migration of a single stored prediction onto the current
+// bracket version. Preserves the user's intent via smartCarryOverKnockout. Once a
+// prediction is stamped at the current version it is returned untouched, so this
+// never fights the user's later edits.
+export function migratePrediction(
+  prediction: PredictionDoc,
+  groupMatches: MatchDoc[],
+): { prediction: PredictionDoc; changed: boolean } {
+  if (prediction.bracketVersion === KNOCKOUT_BRACKET_VERSION) {
+    return { prediction, changed: false };
+  }
+
+  if (!isGroupStageComplete(groupMatches, prediction.groupScores ?? {})) {
+    return {
+      prediction: {
+        ...prediction,
+        knockout: { r32: [], r16: [], qf: [], sf: [], third: null, final: null },
+        champion: null,
+        bracketVersion: KNOCKOUT_BRACKET_VERSION,
+      },
+      changed: true,
+    };
+  }
+
+  const standings = computeGroupStandings(groupMatches, prediction.groupScores);
+  const knockout = smartCarryOverKnockout(standings, prediction.knockout);
+  return {
+    prediction: {
+      ...prediction,
+      knockout,
+      champion: championFromFinal(knockout.final),
+      bracketVersion: KNOCKOUT_BRACKET_VERSION,
+    },
+    changed: true,
+  };
+}
+
 export function championFromFinal(
   final: KnockoutPick | null,
 ): { code: string; name: string } | null {

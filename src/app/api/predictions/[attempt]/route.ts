@@ -11,6 +11,7 @@ import {
   championFromFinal,
   computeGroupStandings,
   isGroupStageComplete,
+  KNOCKOUT_BRACKET_VERSION,
 } from "@/lib/bracket";
 import type {
   GroupScore,
@@ -39,6 +40,7 @@ function emptyPrediction(email: string, attempt: number): PredictionDoc {
     champion: null,
     updatedAt: new Date(),
     completedAt: null,
+    bracketVersion: KNOCKOUT_BRACKET_VERSION,
   };
 }
 

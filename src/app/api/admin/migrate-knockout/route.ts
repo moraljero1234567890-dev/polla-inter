@@ -9,6 +9,7 @@ import {
   isGroupStageComplete,
   smartCarryOverKnockout,
   championFromFinal,
+  KNOCKOUT_BRACKET_VERSION,
 } from "@/lib/bracket";
 import type { MatchDoc, PredictionDoc } from "@/lib/types";
 
@@ -49,6 +50,7 @@ async function migrate(dryRun: boolean): Promise<Response> {
         knockout: { r32: [], r16: [], qf: [], sf: [], third: null, final: null },
         champion: null,
         updatedAt: new Date(),
+        bracketVersion: KNOCKOUT_BRACKET_VERSION,
       };
       emptied += 1;
     } else {
@@ -59,6 +61,7 @@ async function migrate(dryRun: boolean): Promise<Response> {
         knockout,
         champion: championFromFinal(knockout.final),
         updatedAt: new Date(),
+        bracketVersion: KNOCKOUT_BRACKET_VERSION,
       };
       migrated += 1;
     }

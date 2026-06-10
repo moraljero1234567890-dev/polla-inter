@@ -84,4 +84,7 @@ export type PredictionDoc = {
   champion: { code: string; name: string } | null;
   updatedAt: Date;
   completedAt: Date | null;
+  // Knockout bracket schema version. Predictions below the current version are
+  // auto-migrated (intent preserved) on next read. Absent on legacy docs.
+  bracketVersion?: number;
 };
