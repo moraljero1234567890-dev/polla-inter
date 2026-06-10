@@ -103,27 +103,60 @@ export function isGroupStageComplete(
   });
 }
 
-const R32_TEMPLATE: Array<
-  | { home: { kind: "W" | "R"; group: string }; away: { kind: "W" | "R"; group: string } }
-  | { home: { kind: "W"; group: string }; away: { kind: "T"; rank: number } }
-> = [
-  { home: { kind: "W", group: "A" }, away: { kind: "T", rank: 1 } },
-  { home: { kind: "W", group: "B" }, away: { kind: "T", rank: 2 } },
-  { home: { kind: "W", group: "C" }, away: { kind: "T", rank: 3 } },
-  { home: { kind: "W", group: "D" }, away: { kind: "T", rank: 4 } },
-  { home: { kind: "W", group: "E" }, away: { kind: "T", rank: 5 } },
-  { home: { kind: "W", group: "F" }, away: { kind: "T", rank: 6 } },
-  { home: { kind: "W", group: "G" }, away: { kind: "T", rank: 7 } },
-  { home: { kind: "W", group: "H" }, away: { kind: "T", rank: 8 } },
-  { home: { kind: "W", group: "I" }, away: { kind: "R", group: "L" } },
-  { home: { kind: "W", group: "J" }, away: { kind: "R", group: "K" } },
-  { home: { kind: "W", group: "K" }, away: { kind: "R", group: "J" } },
-  { home: { kind: "W", group: "L" }, away: { kind: "R", group: "I" } },
-  { home: { kind: "R", group: "A" }, away: { kind: "R", group: "D" } },
-  { home: { kind: "R", group: "B" }, away: { kind: "R", group: "E" } },
-  { home: { kind: "R", group: "C" }, away: { kind: "R", group: "F" } },
-  { home: { kind: "R", group: "G" }, away: { kind: "R", group: "H" } },
+// ── Official FIFA World Cup 2026 knockout bracket ───────────────────────────
+// Source: 2026 FIFA World Cup competition regulations / official match schedule
+// (Wikipedia: "2026 FIFA World Cup knockout stage", matches 73–104).
+//
+// The 16 Round of 32 ties are listed here in BRACKET (display) order, i.e. each
+// consecutive pair feeds the next round. That lets the linear feed-forward in
+// buildKnockoutFromGroup() and the linear bracket UI render the correct, official
+// pairings without any positional remapping elsewhere.
+//
+// Slot kinds:
+//   W = group winner, R = group runner-up, T = a best third-placed team that
+//   faces the winner of group `winnerGroup` (assigned below per FIFA's matrix).
+//
+// The official match number is kept for traceability only.
+type SlotSpec =
+  | { kind: "W" | "R"; group: string }
+  | { kind: "T"; winnerGroup: string };
+
+const R32_TEMPLATE: Array<{ match: number; home: SlotSpec; away: SlotSpec }> = [
+  { match: 74, home: { kind: "W", group: "E" }, away: { kind: "T", winnerGroup: "E" } },
+  { match: 77, home: { kind: "W", group: "I" }, away: { kind: "T", winnerGroup: "I" } },
+  { match: 73, home: { kind: "R", group: "A" }, away: { kind: "R", group: "B" } },
+  { match: 75, home: { kind: "W", group: "F" }, away: { kind: "R", group: "C" } },
+  { match: 83, home: { kind: "R", group: "K" }, away: { kind: "R", group: "L" } },
+  { match: 84, home: { kind: "W", group: "H" }, away: { kind: "R", group: "J" } },
+  { match: 81, home: { kind: "W", group: "D" }, away: { kind: "T", winnerGroup: "D" } },
+  { match: 82, home: { kind: "W", group: "G" }, away: { kind: "T", winnerGroup: "G" } },
+  { match: 76, home: { kind: "W", group: "C" }, away: { kind: "R", group: "F" } },
+  { match: 78, home: { kind: "R", group: "E" }, away: { kind: "R", group: "I" } },
+  { match: 79, home: { kind: "W", group: "A" }, away: { kind: "T", winnerGroup: "A" } },
+  { match: 80, home: { kind: "W", group: "L" }, away: { kind: "T", winnerGroup: "L" } },
+  { match: 86, home: { kind: "W", group: "J" }, away: { kind: "R", group: "H" } },
+  { match: 88, home: { kind: "R", group: "D" }, away: { kind: "R", group: "G" } },
+  { match: 85, home: { kind: "W", group: "B" }, away: { kind: "T", winnerGroup: "B" } },
+  { match: 87, home: { kind: "W", group: "K" }, away: { kind: "T", winnerGroup: "K" } },
 ];
+
+// For each group winner that hosts a best-third-placed team, the set of groups
+// whose third-placed team is allowed to be drawn into that tie (from the official
+// bracket — guarantees a winner never faces the third-placed team from a group it
+// could otherwise meet improperly, and balances the bracket).
+const THIRD_PLACE_SLOTS: Record<string, string[]> = {
+  E: ["A", "B", "C", "D", "F"],
+  I: ["C", "D", "F", "G", "H"],
+  A: ["C", "E", "F", "H", "I"],
+  L: ["E", "H", "I", "J", "K"],
+  D: ["B", "E", "F", "I", "J"],
+  G: ["A", "E", "H", "I", "J"],
+  B: ["E", "F", "G", "I", "J"],
+  K: ["D", "E", "I", "J", "L"],
+};
+
+// Process slots in official match-number order (74,77,79,80,81,82,85,87).
+const THIRD_SLOT_ORDER = ["E", "I", "A", "L", "D", "G", "B", "K"];
 
 function topThirdPlaced(
   standings: Record<string, StandingRow[]>,
@@ -141,23 +174,69 @@ function topThirdPlaced(
     .slice(0, 8);
 }
 
+// Given the groups whose third-placed teams qualified, decide which one fills
+// each winner slot. Deterministic backtracking over the official allowed-group
+// constraints; always yields a FIFA-legal assignment when one exists (it always
+// does for any 8-of-12 combination, by construction of the matrix).
+function assignThirdPlaceSlots(
+  qualifyingGroups: string[],
+): Record<string, string> {
+  const groups = [...qualifyingGroups].sort();
+  const assignment: Record<string, string> = {};
+  const used = new Set<string>();
+
+  const backtrack = (i: number): boolean => {
+    if (i === THIRD_SLOT_ORDER.length) return true;
+    const winnerGroup = THIRD_SLOT_ORDER[i];
+    const allowed = THIRD_PLACE_SLOTS[winnerGroup];
+    for (const g of groups) {
+      if (used.has(g) || !allowed.includes(g)) continue;
+      assignment[winnerGroup] = g;
+      used.add(g);
+      if (backtrack(i + 1)) return true;
+      used.delete(g);
+      delete assignment[winnerGroup];
+    }
+    return false;
+  };
+
+  if (backtrack(0)) return assignment;
+
+  // Fallback (e.g. fewer than 8 qualified — incomplete standings): greedily fill
+  // whatever slots we can so the bracket degrades gracefully instead of throwing.
+  used.clear();
+  for (const winnerGroup of THIRD_SLOT_ORDER) {
+    const allowed = THIRD_PLACE_SLOTS[winnerGroup];
+    const g = groups.find((x) => !used.has(x) && allowed.includes(x));
+    if (g) {
+      assignment[winnerGroup] = g;
+      used.add(g);
+    }
+  }
+  return assignment;
+}
+
 export type R32SeedTeam = { code: string; name: string } | null;
 
 export function buildR32Seeds(
   standings: Record<string, StandingRow[]>,
 ): Array<{ home: R32SeedTeam; away: R32SeedTeam }> {
   const thirds = topThirdPlaced(standings);
-  const pick = (slot: { kind: "W" | "R" | "T"; group?: string; rank?: number }): R32SeedTeam => {
+  const assignment = assignThirdPlaceSlots(thirds.map((r) => r.group));
+
+  const teamOf = (row: StandingRow | undefined): R32SeedTeam =>
+    row ? { code: row.teamCode, name: row.teamName } : null;
+
+  const pick = (slot: SlotSpec): R32SeedTeam => {
     if (slot.kind === "T") {
-      const row = thirds[(slot.rank ?? 1) - 1];
-      return row ? { code: row.teamCode, name: row.teamName } : null;
+      const sourceGroup = assignment[slot.winnerGroup];
+      return teamOf(sourceGroup ? standings[sourceGroup]?.[2] : undefined);
     }
-    const rows = standings[slot.group!];
+    const rows = standings[slot.group];
     if (!rows) return null;
-    const idx = slot.kind === "W" ? 0 : 1;
-    const row = rows[idx];
-    return row ? { code: row.teamCode, name: row.teamName } : null;
+    return teamOf(rows[slot.kind === "W" ? 0 : 1]);
   };
+
   return R32_TEMPLATE.map((t) => ({
     home: pick(t.home),
     away: pick(t.away),
@@ -303,6 +382,124 @@ export function buildKnockoutFromGroup(
     finalPrev.awayTeamCode === finalFresh.awayTeamCode
       ? { ...finalFresh, home: finalPrev.home, away: finalPrev.away, penaltyWinner: finalPrev.penaltyWinner }
       : finalFresh;
+
+  return { r32, r16, qf, sf, third, final };
+}
+
+// Re-derive a knockout bracket on the NEW structure while preserving as much of
+// the user's ORIGINAL intent as possible. Used to migrate predictions that were
+// filled against the previous (incorrect) bracket. For every new tie we keep the
+// user's literal scoreline if they predicted that exact pairing anywhere; failing
+// that we advance whichever team they sent furthest in their old bracket.
+export function smartCarryOverKnockout(
+  standings: Record<string, StandingRow[]>,
+  old: PredictionDoc["knockout"] | undefined,
+): PredictionDoc["knockout"] {
+  // 1. Intent depth: how far the user advanced each team (won R32 → reached R16 …).
+  const depth = new Map<string, number>();
+  const bump = (team: R32SeedTeam, d: number) => {
+    if (!team) return;
+    if ((depth.get(team.code) ?? -1) < d) depth.set(team.code, d);
+  };
+  const recordWinners = (picks: KnockoutPick[] | undefined, d: number) => {
+    for (const p of picks ?? []) bump(winnerOf(p), d);
+  };
+  recordWinners(old?.r32, 1);
+  recordWinners(old?.r16, 2);
+  recordWinners(old?.qf, 3);
+  recordWinners(old?.sf, 4);
+  if (old?.final) recordWinners([old.final], 5);
+
+  // 2. Decisive scorelines the user gave for specific pairings (any round).
+  const scoreByPair = new Map<
+    string,
+    { homeCode: string; home: number; away: number; pen: "home" | "away" | null }
+  >();
+  const recordScore = (p: KnockoutPick | null | undefined) => {
+    if (!p || p.home == null || p.away == null) return;
+    if (!p.homeTeamCode || !p.awayTeamCode) return;
+    const decisive = p.home !== p.away || p.penaltyWinner != null;
+    if (!decisive) return;
+    const key = [p.homeTeamCode, p.awayTeamCode].sort().join("|");
+    if (!scoreByPair.has(key)) {
+      scoreByPair.set(key, {
+        homeCode: p.homeTeamCode,
+        home: p.home,
+        away: p.away,
+        pen: p.penaltyWinner,
+      });
+    }
+  };
+  for (const list of [old?.r32, old?.r16, old?.qf, old?.sf]) {
+    for (const p of list ?? []) recordScore(p);
+  }
+  recordScore(old?.third);
+  recordScore(old?.final);
+
+  // 3. Fill one tie: reuse the exact prediction for this pairing if we have one,
+  //    otherwise advance the team the user pushed deeper (ties default to home).
+  const fill = (
+    matchId: string,
+    stage: KnockoutPick["stage"],
+    home: R32SeedTeam,
+    away: R32SeedTeam,
+  ): KnockoutPick => {
+    const pick = emptyPick(matchId, stage, home, away);
+    if (!home || !away) return pick;
+    const exact = scoreByPair.get([home.code, away.code].sort().join("|"));
+    if (exact) {
+      if (exact.homeCode === home.code) {
+        pick.home = exact.home;
+        pick.away = exact.away;
+        pick.penaltyWinner = exact.pen;
+      } else {
+        pick.home = exact.away;
+        pick.away = exact.home;
+        pick.penaltyWinner =
+          exact.pen === "home" ? "away" : exact.pen === "away" ? "home" : null;
+      }
+      return pick;
+    }
+    const dh = depth.get(home.code) ?? -1;
+    const da = depth.get(away.code) ?? -1;
+    if (da > dh) {
+      pick.home = 0;
+      pick.away = 1;
+    } else {
+      pick.home = 1;
+      pick.away = 0;
+    }
+    return pick;
+  };
+
+  const r32Seeds = buildR32Seeds(standings);
+  const r32 = r32Seeds.map((s, i) =>
+    fill(`R32-${i + 1}`, "ROUND_OF_32", s.home, s.away),
+  );
+
+  const r16: KnockoutPick[] = [];
+  for (let i = 0; i < 8; i++) {
+    r16.push(
+      fill(`R16-${i + 1}`, "ROUND_OF_16", winnerOf(r32[i * 2]), winnerOf(r32[i * 2 + 1])),
+    );
+  }
+
+  const qf: KnockoutPick[] = [];
+  for (let i = 0; i < 4; i++) {
+    qf.push(
+      fill(`QF-${i + 1}`, "QUARTER_FINALS", winnerOf(r16[i * 2]), winnerOf(r16[i * 2 + 1])),
+    );
+  }
+
+  const sf: KnockoutPick[] = [];
+  for (let i = 0; i < 2; i++) {
+    sf.push(
+      fill(`SF-${i + 1}`, "SEMI_FINALS", winnerOf(qf[i * 2]), winnerOf(qf[i * 2 + 1])),
+    );
+  }
+
+  const third = fill("THIRD-1", "THIRD_PLACE", loserOf(sf[0]), loserOf(sf[1]));
+  const final = fill("FINAL-1", "FINAL", winnerOf(sf[0]), winnerOf(sf[1]));
 
   return { r32, r16, qf, sf, third, final };
 }
