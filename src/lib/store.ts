@@ -118,6 +118,63 @@ export async function updateUserAttempts(
   return result.modifiedCount > 0;
 }
 
+// Update editable profile fields in place (everything except the email, which is
+// the primary key — use changeUserEmail for that). Only provided fields change.
+// Returns false when no such user exists.
+export async function updateUserFields(
+  email: string,
+  fields: { name?: string; password?: string; attemptsAllowed?: number },
+): Promise<boolean> {
+  const set: Partial<UserDoc> = {};
+  if (typeof fields.name === "string" && fields.name.trim()) {
+    set.name = fields.name.trim();
+  }
+  if (typeof fields.password === "string" && fields.password.trim()) {
+    set.password = fields.password.trim();
+  }
+  if (typeof fields.attemptsAllowed === "number" && Number.isFinite(fields.attemptsAllowed)) {
+    set.attemptsAllowed = Math.max(1, Math.min(20, Math.floor(fields.attemptsAllowed)));
+  }
+  if (Object.keys(set).length === 0) return true; // nothing to change is not an error
+  const col = await usersCollection();
+  const result = await col.updateOne(
+    { email: email.trim().toLowerCase() },
+    { $set: set },
+  );
+  return result.matchedCount > 0;
+}
+
+// Change a user's email. The email is the Mongo _id of the user doc AND the
+// foreign key on every prediction (whose own _id is `${email}#${attempt}`), so
+// we recreate the user under the new id, re-key all predictions, then drop the
+// originals. Returns "not_found" if the source is missing, "exists" if the
+// target email is already taken.
+export async function changeUserEmail(
+  oldEmail: string,
+  newEmail: string,
+): Promise<{ ok: true } | { ok: false; reason: "not_found" | "exists" }> {
+  const from = oldEmail.trim().toLowerCase();
+  const to = newEmail.trim().toLowerCase();
+  const col = await usersCollection();
+  await ensureUsersIndex();
+
+  const existing = await col.findOne({ _id: from });
+  if (!existing) return { ok: false, reason: "not_found" };
+  if (from === to) return { ok: true };
+  if (await col.findOne({ _id: to })) return { ok: false, reason: "exists" };
+
+  await col.insertOne({ ...existing, _id: to, email: to });
+  await col.deleteOne({ _id: from });
+
+  const pred = await predictionsCollection();
+  const preds = await pred.find({ userEmail: from }).toArray();
+  for (const p of preds) {
+    await pred.insertOne({ ...p, _id: `${to}#${p.attempt}`, userEmail: to });
+    await pred.deleteOne({ _id: p._id });
+  }
+  return { ok: true };
+}
+
 export async function getUserByEmail(email: string): Promise<UserDoc | null> {
   const col = await usersCollection();
   return col.findOne({ email: email.trim().toLowerCase() });

@@ -71,6 +71,13 @@ export default function AdminPage() {
 
   const [refreshing, setRefreshing] = useState(false);
 
+  const [editing, setEditing] = useState<AdminUser | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editAttempts, setEditAttempts] = useState("1");
+  const [editPassword, setEditPassword] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [leaderboardStats, setLeaderboardStats] =
     useState<LeaderboardStats | null>(null);
@@ -268,15 +275,44 @@ export default function AdminPage() {
     }
   }
 
-  async function handleUpdateAttempts(userEmail: string, current: number) {
-    if (!savedToken) return;
-    const raw = prompt(`Intentos permitidos para ${userEmail} (1–20):`, String(current));
-    if (raw == null) return;
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n < 1 || n > 20) {
-      setBanner({ kind: "err", text: "Valor inválido. Debe ser entre 1 y 20." });
+  function openEdit(u: AdminUser) {
+    setEditing(u);
+    setEditName(u.name);
+    setEditEmail(u.email);
+    setEditAttempts(String(u.attemptsAllowed));
+    setEditPassword("");
+  }
+
+  function closeEdit() {
+    setEditing(null);
+    setEditPassword("");
+  }
+
+  async function handleSaveEdit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!savedToken || !editing) return;
+    const originalEmail = editing.email;
+    const newEmail = editEmail.trim().toLowerCase();
+    const cleanName = editName.trim();
+    const cleanPw = editPassword.trim();
+    const n = Number(editAttempts);
+    if (!cleanName) {
+      setBanner({ kind: "err", text: "El nombre es obligatorio." });
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      setBanner({ kind: "err", text: "Correo inválido." });
+      return;
+    }
+    if (cleanPw && cleanPw.length < 6) {
+      setBanner({ kind: "err", text: "La contraseña debe tener al menos 6 caracteres." });
+      return;
+    }
+    if (!Number.isFinite(n) || n < 1 || n > 20) {
+      setBanner({ kind: "err", text: "Intentos: entre 1 y 20." });
+      return;
+    }
+    setSavingEdit(true);
     try {
       const res = await fetch("/api/admin/users", {
         method: "PATCH",
@@ -284,17 +320,27 @@ export default function AdminPage() {
           "content-type": "application/json",
           authorization: `Bearer ${savedToken}`,
         },
-        body: JSON.stringify({ email: userEmail, attemptsAllowed: n }),
+        body: JSON.stringify({
+          email: originalEmail,
+          newEmail: newEmail !== originalEmail ? newEmail : undefined,
+          name: cleanName,
+          attemptsAllowed: n,
+          ...(cleanPw ? { password: cleanPw } : {}),
+        }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setBanner({ kind: "err", text: data.error ?? `Error ${res.status}` });
+        setBanner({ kind: "err", text: data.detail ?? data.error ?? `Error ${res.status}` });
         return;
       }
-      setBanner({ kind: "ok", text: `Intentos de "${userEmail}" actualizados a ${n}.` });
+      setBanner({ kind: "ok", text: `Usuario "${newEmail}" actualizado.` });
+      closeEdit();
       await loadUsers(savedToken);
+      await loadLeaderboard(savedToken);
     } catch (err) {
       setBanner({ kind: "err", text: err instanceof Error ? err.message : "Error desconocido" });
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -518,14 +564,15 @@ export default function AdminPage() {
                       {u.email}
                     </p>
                   </div>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--foreground-muted)]">
+                    {u.attemptsAllowed} intento{u.attemptsAllowed === 1 ? "" : "s"}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => handleUpdateAttempts(u.email, u.attemptsAllowed)}
-                    className="inline-flex items-center gap-2 border border-[var(--foreground)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                    onClick={() => openEdit(u)}
+                    className="inline-flex items-center border border-[var(--foreground)] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
                   >
-                    {u.attemptsAllowed} intento
-                    {u.attemptsAllowed === 1 ? "" : "s"}
-                    <span className="text-[var(--foreground-muted)]">editar</span>
+                    Editar
                   </button>
                   <button
                     type="button"
@@ -682,6 +729,102 @@ export default function AdminPage() {
           .
         </p>
       </main>
+
+      {editing && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={closeEdit}
+        >
+          <div
+            className="w-full max-w-md border border-[var(--line)] bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-baseline justify-between">
+              <h3 className="font-mono text-xs font-bold uppercase tracking-[0.3em]">
+                Editar usuario
+              </h3>
+              <button
+                type="button"
+                onClick={closeEdit}
+                className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--foreground-muted)] hover:text-[var(--brand)]"
+              >
+                Cerrar ✕
+              </button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="mt-5 grid gap-4">
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+                  Nombre
+                </span>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="mt-1 h-11 w-full border border-[var(--line)] bg-white px-3 outline-none focus:border-[var(--brand)]"
+                  required
+                />
+              </label>
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+                  Correo electrónico
+                </span>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  className="mt-1 h-11 w-full border border-[var(--line)] bg-white px-3 outline-none focus:border-[var(--brand)]"
+                  required
+                />
+                <span className="mt-1 block text-[10px] text-[var(--foreground-muted)]">
+                  Cambiarlo migra sus boletas al nuevo correo.
+                </span>
+              </label>
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+                  Nueva contraseña (opcional)
+                </span>
+                <input
+                  type="text"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  placeholder="Dejar en blanco para no cambiarla"
+                  className="mt-1 h-11 w-full border border-[var(--line)] bg-white px-3 outline-none focus:border-[var(--brand)]"
+                />
+              </label>
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+                  Intentos permitidos (1–20)
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={editAttempts}
+                  onChange={(e) => setEditAttempts(e.target.value)}
+                  className="mt-1 h-11 w-full border border-[var(--line)] bg-white px-3 font-mono tabular-nums outline-none focus:border-[var(--brand)]"
+                  required
+                />
+              </label>
+              <div className="mt-2 flex gap-3">
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="h-11 flex-1 bg-[var(--brand)] px-5 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {savingEdit ? "Guardando…" : "Guardar cambios"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeEdit}
+                  className="h-11 border border-[var(--line)] px-5 text-sm font-semibold uppercase tracking-[0.18em] transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
