@@ -28,6 +28,47 @@ type MatchWithScore = ApiMatch & {
   status?: string;
 };
 
+type ResultClass = "exact" | "outcome" | "miss" | "pending";
+type ScoreLine = { home: number; away: number };
+type GroupDetail = {
+  predicted: ScoreLine | null;
+  actual: ScoreLine | null;
+  result: ResultClass;
+  points: number;
+};
+type KoDetail = {
+  predicted: ScoreLine | null;
+  actual: ScoreLine | null;
+  matchup: boolean;
+  result: ResultClass;
+  points: number;
+};
+type ScoreDetail = {
+  breakdown: {
+    group: { points: number; exact: number; outcomes: number };
+    knockout: { points: number };
+    total: number;
+  };
+  groups: Record<string, GroupDetail>;
+  knockout: Record<string, KoDetail>;
+};
+
+function PointsBadge({ points }: { points: number }) {
+  const positive = points > 0;
+  return (
+    <span
+      className={
+        "inline-flex items-center rounded-sm px-2 py-0.5 font-mono text-[11px] font-bold tabular-nums " +
+        (positive
+          ? "bg-emerald-600 text-white"
+          : "bg-[var(--line)] text-[var(--foreground-muted)]")
+      }
+    >
+      {positive ? `+${points}` : "0"} pts
+    </span>
+  );
+}
+
 function pickClass(
   predicted: { home: number; away: number } | null,
   actual: { home: number; away: number } | null,
@@ -55,6 +96,7 @@ export default function ResultsPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [matches, setMatches] = useState<MatchWithScore[]>([]);
   const [prediction, setPrediction] = useState<PredictionDoc | null>(null);
+  const [detail, setDetail] = useState<ScoreDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,14 +118,20 @@ export default function ResultsPage() {
       fetch(
         `/api/predictions/${attemptNum}?email=${encodeURIComponent(session.email)}`,
       ).then((r) => r.json()),
+      fetch(
+        `/api/results/${attemptNum}?email=${encodeURIComponent(session.email)}`,
+      )
+        .then((r) => (r.ok ? r.json() : { detail: null }))
+        .catch(() => ({ detail: null })),
     ])
-      .then(([m, p]) => {
+      .then(([m, p, d]) => {
         if (cancelled) return;
         const arr: MatchWithScore[] = Array.isArray(m.matches)
           ? m.matches
           : staticFallback();
         setMatches(arr.length ? arr : staticFallback());
         setPrediction(p.prediction);
+        setDetail(d?.detail ?? null);
         setError(null);
       })
       .catch(() => {
@@ -152,6 +200,28 @@ export default function ResultsPage() {
               <span className="text-amber-300">amarillo</span> = mismo resultado,{" "}
               <span className="text-red-300">rojo</span> = fallaste.
             </p>
+            {detail && (
+              <div className="mt-8 grid max-w-lg grid-cols-3 gap-4 border-t border-white/15 pt-6 font-mono text-[11px] uppercase tracking-[0.28em] text-white/60">
+                <div>
+                  <dt>Grupos</dt>
+                  <dd className="mt-1 text-2xl font-black tabular-nums text-white">
+                    {detail.breakdown.group.points}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Eliminatorias</dt>
+                  <dd className="mt-1 text-2xl font-black tabular-nums text-white">
+                    {detail.breakdown.knockout.points}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[var(--brand)]">Total</dt>
+                  <dd className="mt-1 text-3xl font-black tabular-nums text-white">
+                    {detail.breakdown.total}
+                  </dd>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -237,12 +307,17 @@ export default function ResultsPage() {
                           {awayT.name}
                         </span>
                       </div>
-                      <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)] md:text-right">
-                        {m.status === "FINISHED"
-                          ? "Final"
-                          : m.status === "IN_PLAY"
-                            ? "En juego"
-                            : "Programado"}
+                      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)] md:flex-col md:items-end">
+                        {detail?.groups[m._id] && (
+                          <PointsBadge points={detail.groups[m._id].points} />
+                        )}
+                        <span>
+                          {m.status === "FINISHED"
+                            ? "Final"
+                            : m.status === "IN_PLAY"
+                              ? "En juego"
+                              : "Programado"}
+                        </span>
                       </div>
                     </li>
                   );
@@ -273,11 +348,78 @@ export default function ResultsPage() {
                         {picks.map((p) => {
                           const h = displayTeam(p.homeTeamCode, p.homeTeamName);
                           const a = displayTeam(p.awayTeamCode, p.awayTeamName);
+                          const d = detail?.knockout[p.matchId];
                           return (
                             <li
                               key={p.matchId}
-                              className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border border-[var(--line)] bg-white p-4"
+                              className="border border-[var(--line)] bg-white p-4"
                             >
+                              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                                <div className="flex items-center justify-end gap-2 text-right text-sm font-bold uppercase tracking-tight">
+                                  <span>{h.name || "—"}</span>
+                                  {h.crest && (
+                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                    <img
+                                      src={h.crest}
+                                      alt=""
+                                      aria-hidden
+                                      className="h-6 w-9 shrink-0 border border-[var(--line)] object-cover"
+                                    />
+                                  )}
+                                </div>
+                                <span className="font-mono text-lg font-black tabular-nums">
+                                  {p.home != null && p.away != null
+                                    ? `${p.home}–${p.away}${p.penaltyWinner ? " (pen)" : ""}`
+                                    : "—"}
+                                </span>
+                                <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-tight">
+                                  {a.crest && (
+                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                    <img
+                                      src={a.crest}
+                                      alt=""
+                                      aria-hidden
+                                      className="h-6 w-9 shrink-0 border border-[var(--line)] object-cover"
+                                    />
+                                  )}
+                                  <span>{a.name || "—"}</span>
+                                </div>
+                              </div>
+                              {d && (
+                                <div className="mt-3 flex items-center justify-between border-t border-[var(--line)] pt-2 font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--foreground-muted)]">
+                                  <span>
+                                    Real:{" "}
+                                    <span className="font-bold text-[var(--foreground)]">
+                                      {d.actual
+                                        ? `${d.actual.home}–${d.actual.away}`
+                                        : "no se jugó"}
+                                    </span>
+                                  </span>
+                                  <PointsBadge points={d.points} />
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })}
+
+                {(prediction.knockout.third || prediction.knockout.final) && (
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {(["third", "final"] as const).map((key) => {
+                      const p = prediction.knockout[key];
+                      if (!p) return null;
+                      const h = displayTeam(p.homeTeamCode, p.homeTeamName);
+                      const a = displayTeam(p.awayTeamCode, p.awayTeamName);
+                      return (
+                        <div key={key}>
+                          <h3 className="mb-3 font-mono text-xs font-bold uppercase tracking-[0.3em]">
+                            {STAGE_TITLES[key === "third" ? "THIRD_PLACE" : "FINAL"]}
+                          </h3>
+                          <div className="border border-[var(--line)] bg-white p-4">
+                            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                               <div className="flex items-center justify-end gap-2 text-right text-sm font-bold uppercase tracking-tight">
                                 <span>{h.name || "—"}</span>
                                 {h.crest && (
@@ -307,56 +449,20 @@ export default function ResultsPage() {
                                 )}
                                 <span>{a.name || "—"}</span>
                               </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  );
-                })}
-
-                {(prediction.knockout.third || prediction.knockout.final) && (
-                  <div className="grid gap-6 md:grid-cols-2">
-                    {(["third", "final"] as const).map((key) => {
-                      const p = prediction.knockout[key];
-                      if (!p) return null;
-                      const h = displayTeam(p.homeTeamCode, p.homeTeamName);
-                      const a = displayTeam(p.awayTeamCode, p.awayTeamName);
-                      return (
-                        <div key={key}>
-                          <h3 className="mb-3 font-mono text-xs font-bold uppercase tracking-[0.3em]">
-                            {STAGE_TITLES[key === "third" ? "THIRD_PLACE" : "FINAL"]}
-                          </h3>
-                          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border border-[var(--line)] bg-white p-4">
-                            <div className="flex items-center justify-end gap-2 text-right text-sm font-bold uppercase tracking-tight">
-                              <span>{h.name || "—"}</span>
-                              {h.crest && (
-                                /* eslint-disable-next-line @next/next/no-img-element */
-                                <img
-                                  src={h.crest}
-                                  alt=""
-                                  aria-hidden
-                                  className="h-6 w-9 shrink-0 border border-[var(--line)] object-cover"
-                                />
-                              )}
                             </div>
-                            <span className="font-mono text-lg font-black tabular-nums">
-                              {p.home != null && p.away != null
-                                ? `${p.home}–${p.away}${p.penaltyWinner ? " (pen)" : ""}`
-                                : "—"}
-                            </span>
-                            <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-tight">
-                              {a.crest && (
-                                /* eslint-disable-next-line @next/next/no-img-element */
-                                <img
-                                  src={a.crest}
-                                  alt=""
-                                  aria-hidden
-                                  className="h-6 w-9 shrink-0 border border-[var(--line)] object-cover"
-                                />
-                              )}
-                              <span>{a.name || "—"}</span>
-                            </div>
+                            {detail?.knockout[p.matchId] && (
+                              <div className="mt-3 flex items-center justify-between border-t border-[var(--line)] pt-2 font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--foreground-muted)]">
+                                <span>
+                                  Real:{" "}
+                                  <span className="font-bold text-[var(--foreground)]">
+                                    {detail.knockout[p.matchId].actual
+                                      ? `${detail.knockout[p.matchId].actual!.home}–${detail.knockout[p.matchId].actual!.away}`
+                                      : "no se jugó"}
+                                  </span>
+                                </span>
+                                <PointsBadge points={detail.knockout[p.matchId].points} />
+                              </div>
+                            )}
                           </div>
                         </div>
                       );

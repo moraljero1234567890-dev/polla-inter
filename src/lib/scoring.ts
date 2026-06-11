@@ -49,6 +49,33 @@ export type LeaderboardRow = {
   breakdown: ScoreBreakdown;
 };
 
+// Per-match detail used by the user-facing results page to show points earned
+// next to each prediction. "pending" = the real match hasn't finished yet.
+export type MatchResultClass = "exact" | "outcome" | "miss" | "pending";
+
+export type GroupResultDetail = {
+  predicted: { home: number; away: number } | null;
+  actual: { home: number; away: number } | null;
+  result: MatchResultClass;
+  points: number;
+};
+
+export type KnockoutResultDetail = {
+  predicted: { home: number; away: number } | null;
+  // Actual scoreline of the user's predicted pairing, oriented to their home/away.
+  // null when that exact pairing never happened (or hasn't finished yet).
+  actual: { home: number; away: number } | null;
+  matchup: boolean; // the user's exact pairing actually occurred
+  result: MatchResultClass;
+  points: number; // bracket + exact/outcome points attributable to this pick
+};
+
+export type PredictionScoreDetail = {
+  breakdown: ScoreBreakdown;
+  groups: Record<string, GroupResultDetail>; // keyed by group match _id
+  knockout: Record<string, KnockoutResultDetail>; // keyed by pick.matchId
+};
+
 function outcome(home: number, away: number): "H" | "A" | "D" {
   if (home > away) return "H";
   if (away > home) return "A";
@@ -187,8 +214,13 @@ function pickedLoserCode(p: KnockoutPick): string | null {
 function scorePickAgainstReal(
   pick: KnockoutPick,
   realMatchups: RealMatchup[],
-): { matched: boolean; result: "exact" | "outcome" | "miss" } {
-  if (!pick.homeTeamCode || !pick.awayTeamCode) return { matched: false, result: "miss" };
+): {
+  matched: boolean;
+  result: "exact" | "outcome" | "miss";
+  actual: { home: number; away: number } | null;
+} {
+  if (!pick.homeTeamCode || !pick.awayTeamCode)
+    return { matched: false, result: "miss", actual: null };
   const pickKey = makeMatchupKey(pick.homeTeamCode, pick.awayTeamCode);
 
   for (const real of realMatchups) {
@@ -197,17 +229,24 @@ function scorePickAgainstReal(
 
     let userH: number | null;
     let userA: number | null;
+    let actual: { home: number; away: number };
     if (pick.homeTeamCode === real.homeCode) {
       userH = pick.home;
       userA = pick.away;
+      actual = { home: real.ftHome, away: real.ftAway };
     } else {
       userH = pick.away;
       userA = pick.home;
+      actual = { home: real.ftAway, away: real.ftHome };
     }
-    return { matched: true, result: scoreMatch(userH, userA, real.ftHome, real.ftAway) };
+    return {
+      matched: true,
+      result: scoreMatch(userH, userA, real.ftHome, real.ftAway),
+      actual,
+    };
   }
 
-  return { matched: false, result: "miss" };
+  return { matched: false, result: "miss", actual: null };
 }
 
 function emptyBreakdown(): ScoreBreakdown {
@@ -233,11 +272,18 @@ function emptyBreakdown(): ScoreBreakdown {
   };
 }
 
-export function computeLeaderboard(
-  matches: MatchDoc[],
-  predictions: PredictionDoc[],
-  users: { email: string; name: string; attemptsAllowed: number }[],
-): LeaderboardRow[] {
+type ScoringContext = {
+  groupReal: Array<{ id: string; home: number; away: number }>;
+  knock: RealKnockoutData;
+  r32Matchups: RealMatchup[];
+  r16Matchups: RealMatchup[];
+  qfMatchups: RealMatchup[];
+  sfMatchups: RealMatchup[];
+  thirdMatchups: RealMatchup[];
+  finalMatchups: RealMatchup[];
+};
+
+function buildScoringContext(matches: MatchDoc[]): ScoringContext {
   const groupReal: Array<{ id: string; home: number; away: number }> = [];
   for (const m of matches) {
     if (m.stage !== "GROUP_STAGE" || m.status !== "FINISHED") continue;
@@ -245,15 +291,191 @@ export function computeLeaderboard(
     if (!ft) continue;
     groupReal.push({ id: m._id, home: ft.home, away: ft.away });
   }
-
   const knock = extractKnockoutData(matches);
-  const r32Matchups = knock.matchups.get("ROUND_OF_32") ?? [];
-  const r16Matchups = knock.matchups.get("ROUND_OF_16") ?? [];
-  const qfMatchups = knock.matchups.get("QUARTER_FINALS") ?? [];
-  const sfMatchups = knock.matchups.get("SEMI_FINALS") ?? [];
-  const thirdMatchups = knock.matchups.get("THIRD_PLACE") ?? [];
-  const finalMatchups = knock.matchups.get("FINAL") ?? [];
+  return {
+    groupReal,
+    knock,
+    r32Matchups: knock.matchups.get("ROUND_OF_32") ?? [],
+    r16Matchups: knock.matchups.get("ROUND_OF_16") ?? [],
+    qfMatchups: knock.matchups.get("QUARTER_FINALS") ?? [],
+    sfMatchups: knock.matchups.get("SEMI_FINALS") ?? [],
+    thirdMatchups: knock.matchups.get("THIRD_PLACE") ?? [],
+    finalMatchups: knock.matchups.get("FINAL") ?? [],
+  };
+}
 
+// Score one prediction against the real results, returning both the aggregate
+// breakdown (used by the leaderboard) and per-match detail (used by the results
+// page). Single source of truth so the two views can never disagree.
+function scoreSinglePrediction(
+  p: PredictionDoc,
+  ctx: ScoringContext,
+): {
+  breakdown: ScoreBreakdown;
+  groups: Record<string, GroupResultDetail>;
+  knockout: Record<string, KnockoutResultDetail>;
+} {
+  const br = emptyBreakdown();
+  const groups: Record<string, GroupResultDetail> = {};
+  const knockout: Record<string, KnockoutResultDetail> = {};
+
+  // ── GROUP STAGE: 3 pts outcome, 5 pts exact ──
+  for (const m of ctx.groupReal) {
+    const pick = p.groupScores[m.id];
+    const predicted =
+      pick && typeof pick.home === "number" && typeof pick.away === "number"
+        ? { home: pick.home, away: pick.away }
+        : null;
+    const r = predicted
+      ? scoreMatch(predicted.home, predicted.away, m.home, m.away)
+      : "miss";
+    let points = 0;
+    if (r === "exact") {
+      br.group.exact += 1;
+      points = POINTS.MATCH_EXACT;
+      br.group.points += points;
+    } else if (r === "outcome") {
+      br.group.outcomes += 1;
+      points = POINTS.MATCH_OUTCOME;
+      br.group.points += points;
+    }
+    groups[m.id] = {
+      predicted,
+      actual: { home: m.home, away: m.away },
+      result: r,
+      points,
+    };
+  }
+
+  // ── R32: match points always apply (no perfect-bracket restriction) ──
+  for (const pick of p.knockout.r32) {
+    const { matched, result, actual } = scorePickAgainstReal(pick, ctx.r32Matchups);
+    let points = 0;
+    if (matched && result === "exact") {
+      br.knockout.r32Exact += 1;
+      points = POINTS.MATCH_EXACT;
+      br.knockout.points += points;
+    } else if (matched && result === "outcome") {
+      br.knockout.r32Outcomes += 1;
+      points = POINTS.MATCH_OUTCOME;
+      br.knockout.points += points;
+    }
+    knockout[pick.matchId] = {
+      predicted: pick.home != null && pick.away != null ? { home: pick.home, away: pick.away } : null,
+      actual,
+      matchup: matched,
+      result: matched ? result : "miss",
+      points,
+    };
+  }
+
+  // ── R16+: perfect-bracket bonus + match points only with perfect bracket ──
+  const scoreBracketStage = (picks: KnockoutPick[], realM: RealMatchup[]) => {
+    for (const pick of picks) {
+      const { matched, result, actual } = scorePickAgainstReal(pick, realM);
+      let points = 0;
+      if (matched) {
+        br.knockout.perfectBrackets += 1;
+        points += POINTS.PERFECT_BRACKET;
+        br.knockout.points += POINTS.PERFECT_BRACKET;
+        if (result === "exact") {
+          br.knockout.bracketExact += 1;
+          points += POINTS.MATCH_EXACT;
+          br.knockout.points += POINTS.MATCH_EXACT;
+        } else if (result === "outcome") {
+          br.knockout.bracketOutcomes += 1;
+          points += POINTS.MATCH_OUTCOME;
+          br.knockout.points += POINTS.MATCH_OUTCOME;
+        }
+      }
+      knockout[pick.matchId] = {
+        predicted: pick.home != null && pick.away != null ? { home: pick.home, away: pick.away } : null,
+        actual,
+        matchup: matched,
+        result: matched ? result : "miss",
+        points,
+      };
+    }
+  };
+
+  scoreBracketStage(p.knockout.r16, ctx.r16Matchups);
+  scoreBracketStage(p.knockout.qf, ctx.qfMatchups);
+  scoreBracketStage(p.knockout.sf, ctx.sfMatchups);
+  if (p.knockout.third) scoreBracketStage([p.knockout.third], ctx.thirdMatchups);
+  if (p.knockout.final) scoreBracketStage([p.knockout.final], ctx.finalMatchups);
+
+  // ── TEAM ADVANCEMENT: correct teams reaching each round ──
+  const collectWinners = (picks: KnockoutPick[]): Set<string> => {
+    const s = new Set<string>();
+    for (const pick of picks) {
+      const w = pickedWinnerCode(pick);
+      if (w) s.add(w);
+    }
+    return s;
+  };
+
+  for (const code of collectWinners(p.knockout.r32)) {
+    if (ctx.knock.r32Winners.has(code)) {
+      br.knockout.advanceR16 += 1;
+      br.knockout.points += POINTS.ADVANCE_R16;
+    }
+  }
+  for (const code of collectWinners(p.knockout.r16)) {
+    if (ctx.knock.r16Winners.has(code)) {
+      br.knockout.advanceQf += 1;
+      br.knockout.points += POINTS.ADVANCE_QF;
+    }
+  }
+  for (const code of collectWinners(p.knockout.qf)) {
+    if (ctx.knock.qfWinners.has(code)) {
+      br.knockout.advanceSf += 1;
+      br.knockout.points += POINTS.ADVANCE_SF;
+    }
+  }
+  for (const code of collectWinners(p.knockout.sf)) {
+    if (ctx.knock.sfWinners.has(code)) {
+      br.knockout.advanceFinal += 1;
+      br.knockout.points += POINTS.ADVANCE_FINAL;
+    }
+  }
+
+  // ── FINAL POSITIONS ──
+  if (ctx.knock.champion && p.champion?.code === ctx.knock.champion) {
+    br.knockout.champion = 1;
+    br.knockout.points += POINTS.CHAMPION;
+  }
+  if (ctx.knock.runnerUp && p.knockout.final) {
+    const loser = pickedLoserCode(p.knockout.final);
+    if (loser && loser === ctx.knock.runnerUp) {
+      br.knockout.runnerUp = 1;
+      br.knockout.points += POINTS.RUNNER_UP;
+    }
+  }
+  if (ctx.knock.thirdPlace && p.knockout.third) {
+    const winner = pickedWinnerCode(p.knockout.third);
+    if (winner && winner === ctx.knock.thirdPlace) {
+      br.knockout.third = 1;
+      br.knockout.points += POINTS.THIRD;
+    }
+  }
+  if (ctx.knock.fourthPlace && p.knockout.third) {
+    const loser = pickedLoserCode(p.knockout.third);
+    if (loser && loser === ctx.knock.fourthPlace) {
+      br.knockout.fourth = 1;
+      br.knockout.points += POINTS.FOURTH;
+    }
+  }
+
+  br.total = br.group.points + br.knockout.points;
+  return { breakdown: br, groups, knockout };
+}
+
+export function computeLeaderboard(
+  matches: MatchDoc[],
+  predictions: PredictionDoc[],
+  users: { email: string; name: string; attemptsAllowed: number }[],
+): LeaderboardRow[] {
+  const ctx = buildScoringContext(matches);
   const userByEmail = new Map(users.map((u) => [u.email, u]));
   const totalAttemptsByEmail = new Map<string, number>();
   for (const p of predictions) {
@@ -264,145 +486,17 @@ export function computeLeaderboard(
   }
 
   const rows: LeaderboardRow[] = [];
-
   for (const p of predictions) {
     const user = userByEmail.get(p.userEmail);
     if (!user) continue;
-    const br = emptyBreakdown();
-
-    // ── GROUP STAGE: 3 pts outcome, 5 pts exact ──
-    for (const m of groupReal) {
-      const pick = p.groupScores[m.id];
-      if (!pick) continue;
-      const r = scoreMatch(pick.home, pick.away, m.home, m.away);
-      if (r === "exact") {
-        br.group.exact += 1;
-        br.group.points += POINTS.MATCH_EXACT;
-      } else if (r === "outcome") {
-        br.group.outcomes += 1;
-        br.group.points += POINTS.MATCH_OUTCOME;
-      }
-    }
-
-    // ── R32: match points always apply (no perfect-bracket restriction) ──
-    for (const pick of p.knockout.r32) {
-      const { matched, result } = scorePickAgainstReal(pick, r32Matchups);
-      if (!matched) continue;
-      if (result === "exact") {
-        br.knockout.r32Exact += 1;
-        br.knockout.points += POINTS.MATCH_EXACT;
-      } else if (result === "outcome") {
-        br.knockout.r32Outcomes += 1;
-        br.knockout.points += POINTS.MATCH_OUTCOME;
-      }
-    }
-
-    // ── R16+: perfect-bracket bonus + match points only with perfect bracket ──
-    const scoreBracketStage = (
-      picks: KnockoutPick[],
-      realM: RealMatchup[],
-    ) => {
-      for (const pick of picks) {
-        const { matched, result } = scorePickAgainstReal(pick, realM);
-        if (!matched) continue;
-        br.knockout.perfectBrackets += 1;
-        br.knockout.points += POINTS.PERFECT_BRACKET;
-        if (result === "exact") {
-          br.knockout.bracketExact += 1;
-          br.knockout.points += POINTS.MATCH_EXACT;
-        } else if (result === "outcome") {
-          br.knockout.bracketOutcomes += 1;
-          br.knockout.points += POINTS.MATCH_OUTCOME;
-        }
-      }
-    };
-
-    scoreBracketStage(p.knockout.r16, r16Matchups);
-    scoreBracketStage(p.knockout.qf, qfMatchups);
-    scoreBracketStage(p.knockout.sf, sfMatchups);
-    if (p.knockout.third) scoreBracketStage([p.knockout.third], thirdMatchups);
-    if (p.knockout.final) scoreBracketStage([p.knockout.final], finalMatchups);
-
-    // ── TEAM ADVANCEMENT: correct teams reaching each round ──
-    const collectWinners = (picks: KnockoutPick[]): Set<string> => {
-      const s = new Set<string>();
-      for (const pick of picks) {
-        const w = pickedWinnerCode(pick);
-        if (w) s.add(w);
-      }
-      return s;
-    };
-
-    const userR16 = collectWinners(p.knockout.r32);
-    for (const code of userR16) {
-      if (knock.r32Winners.has(code)) {
-        br.knockout.advanceR16 += 1;
-        br.knockout.points += POINTS.ADVANCE_R16;
-      }
-    }
-
-    const userQf = collectWinners(p.knockout.r16);
-    for (const code of userQf) {
-      if (knock.r16Winners.has(code)) {
-        br.knockout.advanceQf += 1;
-        br.knockout.points += POINTS.ADVANCE_QF;
-      }
-    }
-
-    const userSf = collectWinners(p.knockout.qf);
-    for (const code of userSf) {
-      if (knock.qfWinners.has(code)) {
-        br.knockout.advanceSf += 1;
-        br.knockout.points += POINTS.ADVANCE_SF;
-      }
-    }
-
-    const userFinal = collectWinners(p.knockout.sf);
-    for (const code of userFinal) {
-      if (knock.sfWinners.has(code)) {
-        br.knockout.advanceFinal += 1;
-        br.knockout.points += POINTS.ADVANCE_FINAL;
-      }
-    }
-
-    // ── FINAL POSITIONS ──
-    if (knock.champion && p.champion?.code === knock.champion) {
-      br.knockout.champion = 1;
-      br.knockout.points += POINTS.CHAMPION;
-    }
-
-    if (knock.runnerUp && p.knockout.final) {
-      const loser = pickedLoserCode(p.knockout.final);
-      if (loser && loser === knock.runnerUp) {
-        br.knockout.runnerUp = 1;
-        br.knockout.points += POINTS.RUNNER_UP;
-      }
-    }
-
-    if (knock.thirdPlace && p.knockout.third) {
-      const winner = pickedWinnerCode(p.knockout.third);
-      if (winner && winner === knock.thirdPlace) {
-        br.knockout.third = 1;
-        br.knockout.points += POINTS.THIRD;
-      }
-    }
-
-    if (knock.fourthPlace && p.knockout.third) {
-      const loser = pickedLoserCode(p.knockout.third);
-      if (loser && loser === knock.fourthPlace) {
-        br.knockout.fourth = 1;
-        br.knockout.points += POINTS.FOURTH;
-      }
-    }
-
-    br.total = br.group.points + br.knockout.points;
+    const { breakdown } = scoreSinglePrediction(p, ctx);
     rows.push({
       email: user.email,
       name: user.name,
       attempt: p.attempt,
       attemptsAllowed: user.attemptsAllowed,
       totalAttempts: totalAttemptsByEmail.get(p.userEmail) ?? 0,
-      breakdown: br,
+      breakdown,
     });
   }
 
@@ -413,4 +507,14 @@ export function computeLeaderboard(
   });
 
   return rows;
+}
+
+// Detailed score for a single prediction — powers the user results page.
+export function scorePredictionDetail(
+  matches: MatchDoc[],
+  prediction: PredictionDoc,
+): PredictionScoreDetail {
+  const ctx = buildScoringContext(matches);
+  const { breakdown, groups, knockout } = scoreSinglePrediction(prediction, ctx);
+  return { breakdown, groups, knockout };
 }
