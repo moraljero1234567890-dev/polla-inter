@@ -21,6 +21,11 @@ export default function DashboardPage() {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [attempts, setAttempts] = useState<AttemptSummary[]>([]);
+  const [standings, setStandings] = useState<
+    Record<number, { rank: number; total: number }>
+  >({});
+  const [participants, setParticipants] = useState(0);
+  const [finishedMatches, setFinishedMatches] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +55,34 @@ export default function DashboardPage() {
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  // Best-effort: pull this user's points + position per attempt from the
+  // leaderboard (which ranks every (user, attempt) row globally).
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    fetch("/api/leaderboard")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then((data) => {
+        if (cancelled) return;
+        const email = session.email.toLowerCase();
+        const mine: Record<number, { rank: number; total: number }> = {};
+        for (const row of data.rows ?? []) {
+          if (row.email?.toLowerCase() === email) {
+            mine[row.attempt] = { rank: row.rank, total: row.total };
+          }
+        }
+        setStandings(mine);
+        setParticipants(data.stats?.totalParticipants ?? (data.rows?.length ?? 0));
+        setFinishedMatches(data.stats?.finishedMatches ?? 0);
+      })
+      .catch(() => {
+        if (!cancelled) setStandings({});
       });
     return () => {
       cancelled = true;
@@ -191,7 +224,31 @@ export default function DashboardPage() {
                         )}
                       </div>
                     </div>
-                    <div />
+                    <div className="md:text-center">
+                      {standings[row.attempt] ? (
+                        <>
+                          <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+                            Puntos
+                          </p>
+                          <p className="mt-1 text-3xl font-black tabular-nums">
+                            {standings[row.attempt].total}
+                          </p>
+                          {finishedMatches > 0 && (
+                            <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--foreground-soft)]">
+                              Puesto{" "}
+                              <span className="font-bold text-[var(--brand)]">
+                                {standings[row.attempt].rank}
+                              </span>{" "}
+                              de {participants}
+                            </p>
+                          )}
+                        </>
+                      ) : completed ? (
+                        <p className="font-mono text-[10px] uppercase tracking-[0.24em] text-[var(--foreground-muted)]">
+                          Sin puntos aún
+                        </p>
+                      ) : null}
+                    </div>
                     <div className="flex flex-wrap gap-3">
                       <Link
                         href={`/dashboard/predict/${row.attempt}`}
