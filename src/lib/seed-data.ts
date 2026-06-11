@@ -4,7 +4,8 @@ import type { MatchDoc, UserDoc } from "./types";
 
 export function buildMatchSeed(): MatchDoc[] {
   return staticMatches.map((m) => {
-    const utcDate = `${m.date}T${m.time}:00Z`;
+    // m.date/m.time are Colombia local time (UTC−5); derive the true UTC instant.
+    const utcDate = new Date(`${m.date}T${m.time}:00-05:00`).toISOString();
     return {
       _id: m.id,
       source: "dummy",

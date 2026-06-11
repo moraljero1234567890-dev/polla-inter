@@ -270,6 +270,8 @@ function parseLocalTime(raw: string): {
   return { hour, minute, offsetHours };
 }
 
+// Returns the true UTC instant plus the Colombia-local (UTC−5) date/time used for
+// display, so stored matches read in Colombian time regardless of the venue zone.
 function combineUtc(
   date: string,
   local: { hour: number; minute: number; offsetHours: number },
@@ -277,12 +279,11 @@ function combineUtc(
   const [y, mo, d] = date.split("-").map(Number);
   const localMs = Date.UTC(y, mo - 1, d, local.hour, local.minute);
   const utcMs = localMs - local.offsetHours * 3600 * 1000;
-  const utc = new Date(utcMs);
-  const utcDate = utc.toISOString();
+  const cot = new Date(utcMs - 5 * 3600 * 1000); // America/Bogota, UTC−5, no DST
   return {
-    utcDate,
-    date: utcDate.slice(0, 10),
-    time: utcDate.slice(11, 16),
+    utcDate: new Date(utcMs).toISOString(),
+    date: cot.toISOString().slice(0, 10),
+    time: cot.toISOString().slice(11, 16),
   };
 }
 
