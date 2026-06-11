@@ -159,13 +159,21 @@ export async function upsertPrediction(doc: PredictionDoc): Promise<void> {
   await col.replaceOne({ _id: doc._id }, doc, { upsert: true });
 }
 
+// Hard cutoff for filling/editing predictions, independent of the schedule.
+// 1:00 PM Colombia time (UTC-5) on June 11 2026 == 18:00 UTC.
+export const PREDICTION_DEADLINE_UTC = "2026-06-11T18:00:00Z";
+
 export async function isTournamentLocked(): Promise<boolean> {
+  const deadline = new Date(PREDICTION_DEADLINE_UTC).getTime();
+  // Never allow edits past the first kickoff either — whichever comes first wins.
   const col = await matchesCollection();
   const first = await col
     .find({ stage: "GROUP_STAGE" })
     .sort({ utcDate: 1 })
     .limit(1)
     .toArray();
-  if (!first.length) return false;
-  return new Date(first[0].utcDate).getTime() <= Date.now();
+  const firstKickoff = first.length
+    ? new Date(first[0].utcDate).getTime()
+    : Number.POSITIVE_INFINITY;
+  return Date.now() >= Math.min(deadline, firstKickoff);
 }
