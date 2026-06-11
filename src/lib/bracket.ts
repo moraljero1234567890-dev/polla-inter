@@ -1,3 +1,7 @@
+import {
+  THIRD_PLACE_ALLOCATION,
+  THIRD_PLACE_WINNER_ORDER,
+} from "../data/thirdPlaceAllocation";
 import type {
   GroupScore,
   KnockoutPick,
@@ -175,36 +179,33 @@ function topThirdPlaced(
 }
 
 // Given the groups whose third-placed teams qualified, decide which one fills
-// each winner slot. Deterministic backtracking over the official allowed-group
-// constraints; always yields a FIFA-legal assignment when one exists (it always
-// does for any 8-of-12 combination, by construction of the matrix).
+// each winner slot. The exact assignment is NOT free to choose: FIFA publishes a
+// fixed lookup (Annex C of the regulations — all 495 eight-of-twelve combinations)
+// in THIRD_PLACE_ALLOCATION. We key it by the sorted set of qualifying groups and
+// decode straight into a winnerGroup → sourceGroup map, so every combination is
+// byte-for-byte the official pairing rather than merely a rules-legal one.
 function assignThirdPlaceSlots(
   qualifyingGroups: string[],
 ): Record<string, string> {
-  const groups = [...qualifyingGroups].sort();
+  const groups = [...new Set(qualifyingGroups)].sort();
   const assignment: Record<string, string> = {};
-  const used = new Set<string>();
 
-  const backtrack = (i: number): boolean => {
-    if (i === THIRD_SLOT_ORDER.length) return true;
-    const winnerGroup = THIRD_SLOT_ORDER[i];
-    const allowed = THIRD_PLACE_SLOTS[winnerGroup];
-    for (const g of groups) {
-      if (used.has(g) || !allowed.includes(g)) continue;
-      assignment[winnerGroup] = g;
-      used.add(g);
-      if (backtrack(i + 1)) return true;
-      used.delete(g);
-      delete assignment[winnerGroup];
+  // Official path: exactly the eight best third-placed teams are known.
+  if (groups.length === 8) {
+    const value = THIRD_PLACE_ALLOCATION[groups.join("")];
+    if (value && value.length === THIRD_PLACE_WINNER_ORDER.length) {
+      THIRD_PLACE_WINNER_ORDER.forEach((winnerGroup, i) => {
+        assignment[winnerGroup] = value[i];
+      });
+      return assignment;
     }
-    return false;
-  };
+  }
 
-  if (backtrack(0)) return assignment;
-
-  // Fallback (e.g. fewer than 8 qualified — incomplete standings): greedily fill
-  // whatever slots we can so the bracket degrades gracefully instead of throwing.
-  used.clear();
+  // Fallback (fewer than 8 qualified — i.e. incomplete predicted standings):
+  // greedily fill whatever slots we can, respecting the allowed-group matrix, so
+  // the bracket degrades gracefully instead of throwing. Once the user finishes
+  // the group stage the official path above always applies.
+  const used = new Set<string>();
   for (const winnerGroup of THIRD_SLOT_ORDER) {
     const allowed = THIRD_PLACE_SLOTS[winnerGroup];
     const g = groups.find((x) => !used.has(x) && allowed.includes(x));
@@ -506,7 +507,9 @@ export function smartCarryOverKnockout(
 
 // Bump whenever the bracket structure changes so stored predictions re-migrate.
 // v2 = official FIFA 2026 Round of 32 layout + per-slot third-place assignment.
-export const KNOCKOUT_BRACKET_VERSION = 2;
+// v3 = third-place slots now resolved via FIFA's official Annex C allocation
+//      table (all 495 combinations) instead of a rules-legal backtracking guess.
+export const KNOCKOUT_BRACKET_VERSION = 3;
 
 // One-time, idempotent migration of a single stored prediction onto the current
 // bracket version. Preserves the user's intent via smartCarryOverKnockout. Once a
