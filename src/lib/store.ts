@@ -217,8 +217,8 @@ export async function upsertPrediction(doc: PredictionDoc): Promise<void> {
 }
 
 // Hard cutoff for filling/editing predictions, independent of the schedule.
-// 1:00 PM Colombia time (UTC-5) on June 11 2026 == 18:00 UTC.
-export const PREDICTION_DEADLINE_UTC = "2026-06-11T18:00:00Z";
+// 2:00 PM Colombia time (UTC-5) on June 11 2026 == 19:00 UTC.
+export const PREDICTION_DEADLINE_UTC = "2026-06-11T19:00:00Z";
 
 export async function isTournamentLocked(): Promise<boolean> {
   const deadline = new Date(PREDICTION_DEADLINE_UTC).getTime();
