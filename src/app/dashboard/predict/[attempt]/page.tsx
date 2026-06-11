@@ -614,6 +614,7 @@ export default function PredictPage() {
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [activeGroup, setActiveGroup] = useState<string>("A");
+  const [exporting, setExporting] = useState(false);
   const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
@@ -734,6 +735,24 @@ export default function PredictPage() {
     groupComplete &&
     knockoutFilled === totalKnockout &&
     !!prediction?.champion;
+
+  const handleExportPdf = useCallback(async () => {
+    if (!prediction || !session) return;
+    setExporting(true);
+    try {
+      const { downloadPredictionPdf } = await import("@/lib/export-pdf");
+      await downloadPredictionPdf({
+        prediction,
+        matches,
+        email: session.email,
+        attempt: attemptNum,
+      });
+    } catch {
+      setError("No pudimos generar el PDF. Inténtalo de nuevo.");
+    } finally {
+      setExporting(false);
+    }
+  }, [prediction, matches, session, attemptNum]);
 
   const sendPayload = useCallback(
     async (
@@ -979,6 +998,15 @@ export default function PredictPage() {
                     ? "Error al guardar"
                     : ""}
             </span>
+            {allDone && (
+              <button
+                onClick={handleExportPdf}
+                disabled={exporting}
+                className="rounded-sm bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exporting ? "Generando…" : "Exportar PDF"}
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="rounded-sm border border-[var(--line)] px-4 py-2 text-sm font-semibold transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
