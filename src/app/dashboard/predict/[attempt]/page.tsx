@@ -206,12 +206,14 @@ function ScoreInput({
   onCommit,
   ariaLabel,
   size = "lg",
+  disabled = false,
 }: {
   value: number | null | undefined;
   onChange: (v: number | null) => void;
   onCommit?: () => void;
   ariaLabel: string;
   size?: "lg" | "sm";
+  disabled?: boolean;
 }) {
   const [text, setText] = useState<string>(
     value == null || value === undefined ? "" : String(value),
@@ -231,6 +233,7 @@ function ScoreInput({
       max={20}
       aria-label={ariaLabel}
       value={text}
+      disabled={disabled}
       onChange={(e) => {
         const raw = e.target.value.replace(/[^0-9]/g, "");
         setText(raw);
@@ -245,7 +248,7 @@ function ScoreInput({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === "Tab") onCommit?.();
       }}
-      className={`${sizeCls} border border-[var(--line)] bg-white text-center font-mono font-black tabular-nums outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/20`}
+      className={`${sizeCls} border border-[var(--line)] bg-white text-center font-mono font-black tabular-nums outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/20 disabled:cursor-not-allowed disabled:bg-[var(--surface)] disabled:text-[var(--foreground-muted)]`}
     />
   );
 }
@@ -350,11 +353,13 @@ function GroupMatchRow({
   score,
   onChange,
   onCommit,
+  disabled = false,
 }: {
   match: ApiMatch;
   score: GroupDraft | undefined;
   onChange: (home: number | null, away: number | null) => void;
   onCommit: () => void;
+  disabled?: boolean;
 }) {
   const home = normalizeTeam(match.home);
   const away = normalizeTeam(match.away);
@@ -380,6 +385,7 @@ function GroupMatchRow({
           onChange={(v) => onChange(v, score?.away ?? null)}
           onCommit={onCommit}
           ariaLabel={`${home.name} goles`}
+          disabled={disabled}
         />
         <span className="font-mono text-xs font-bold text-[var(--foreground-muted)]">
           vs
@@ -389,6 +395,7 @@ function GroupMatchRow({
           onChange={(v) => onChange(score?.home ?? null, v)}
           onCommit={onCommit}
           ariaLabel={`${away.name} goles`}
+          disabled={disabled}
         />
       </div>
       <div>
@@ -420,12 +427,14 @@ function BracketCard({
   onCommit,
   onPickPenalty,
   size = "sm",
+  disabled = false,
 }: {
   pick: KnockoutPick;
   onChange: (home: number | null, away: number | null) => void;
   onCommit: () => void;
   onPickPenalty: (winner: "home" | "away") => void;
   size?: "sm" | "lg";
+  disabled?: boolean;
 }) {
   const isTie =
     pick.home != null && pick.away != null && pick.home === pick.away;
@@ -479,6 +488,7 @@ function BracketCard({
           onCommit={onCommit}
           ariaLabel={`${team.name} goles`}
           size={inputSize}
+          disabled={disabled}
         />
       </div>
     );
@@ -498,8 +508,9 @@ function BracketCard({
             <button
               type="button"
               onClick={() => onPickPenalty("home")}
+              disabled={disabled}
               className={
-                "flex-1 truncate border px-1.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition " +
+                "flex-1 truncate border px-1.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-60 " +
                 (pick.penaltyWinner === "home"
                   ? "border-[var(--brand)] bg-[var(--brand)] text-white"
                   : "border-[var(--line)] hover:border-[var(--brand)]")
@@ -511,8 +522,9 @@ function BracketCard({
             <button
               type="button"
               onClick={() => onPickPenalty("away")}
+              disabled={disabled}
               className={
-                "flex-1 truncate border px-1.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition " +
+                "flex-1 truncate border px-1.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-60 " +
                 (pick.penaltyWinner === "away"
                   ? "border-[var(--brand)] bg-[var(--brand)] text-white"
                   : "border-[var(--line)] hover:border-[var(--brand)]")
@@ -613,6 +625,7 @@ export default function PredictPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [locked, setLocked] = useState(false);
   const [activeGroup, setActiveGroup] = useState<string>("A");
   const [exporting, setExporting] = useState(false);
   const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(
@@ -668,6 +681,7 @@ export default function PredictPage() {
         setMatches(arr.length ? arr : staticFallback());
         setPrediction(p.prediction);
         setGroupDrafts(p.prediction?.groupScores ?? {});
+        setLocked(Boolean(p.locked));
         setError(null);
       })
       .catch(() => {
@@ -819,6 +833,7 @@ export default function PredictPage() {
     home: number | null,
     away: number | null,
   ) {
+    if (locked) return;
     setGroupDrafts((prev) => {
       const next = { ...prev };
       if (home == null && away == null) {
@@ -860,6 +875,7 @@ export default function PredictPage() {
     away: number | null,
     penaltyWinner: "home" | "away" | null,
   ) {
+    if (locked) return;
     setPrediction((prev) => {
       if (!prev) return prev;
       const nextKnockout: PredictionDoc["knockout"] = {
@@ -1061,6 +1077,18 @@ export default function PredictPage() {
               </div>
             )}
 
+            {locked && (
+              <div className="mx-auto mt-6 max-w-6xl border-l-4 border-amber-500 bg-amber-50 p-4 px-6 text-sm text-amber-900">
+                <p className="font-mono text-[11px] font-bold uppercase tracking-[0.28em]">
+                  Pronóstico cerrado
+                </p>
+                <p className="mt-1">
+                  El torneo ya comenzó, así que los pronósticos están bloqueados.
+                  Puedes ver tu boleta pero ya no es posible modificarla.
+                </p>
+              </div>
+            )}
+
             <section className="sticky top-[65px] z-20 border-b border-[var(--line)] bg-[var(--background)]/95 backdrop-blur">
               <div className="mx-auto max-w-6xl px-6 py-4">
                 <div className="flex items-center gap-3 overflow-x-auto pb-1">
@@ -1115,8 +1143,9 @@ export default function PredictPage() {
                   Grupo {activeGroup}
                 </p>
                 <p className="mt-2 text-sm text-[var(--foreground-soft)]">
-                  Llena el marcador de cada partido. Los cambios se guardan
-                  automáticamente.
+                  {locked
+                    ? "Los pronósticos están cerrados. Esta es tu boleta final."
+                    : "Llena el marcador de cada partido. Los cambios se guardan automáticamente."}
                 </p>
               </div>
               <div className="mt-8 space-y-8">
@@ -1143,6 +1172,7 @@ export default function PredictPage() {
                             score={groupDrafts[m._id]}
                             onChange={(h, a) => queueGroupSave(m._id, h, a)}
                             onCommit={() => flushMatch(m._id)}
+                            disabled={locked}
                           />
                         ))}
                       </ul>
@@ -1247,6 +1277,7 @@ export default function PredictPage() {
                                       w,
                                     )
                                   }
+                                  disabled={locked}
                                 />
                               </BracketSlot>
                             ))}
@@ -1285,6 +1316,7 @@ export default function PredictPage() {
                             w,
                           )
                         }
+                        disabled={locked}
                       />
                     </div>
                   )}

@@ -101,7 +101,8 @@ export async function GET(
     );
   }
   const prediction = await loadOrCreate(email, attempt);
-  return NextResponse.json({ prediction });
+  const locked = (await isTournamentLocked()) || prediction.status === "locked";
+  return NextResponse.json({ prediction, locked });
 }
 
 type PostBody =
