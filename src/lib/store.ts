@@ -221,8 +221,15 @@ export async function upsertPrediction(doc: PredictionDoc): Promise<void> {
 export const PREDICTION_DEADLINE_UTC = "2026-06-11T19:00:00Z";
 
 export async function isTournamentLocked(): Promise<boolean> {
+  const now = Date.now();
+  // The hard deadline is authoritative and always wins — once it passes, edits
+  // are closed no matter what the match data looks like.
   const deadline = new Date(PREDICTION_DEADLINE_UTC).getTime();
-  // Never allow edits past the first kickoff either — whichever comes first wins.
+  if (now >= deadline) return true;
+
+  // The schedule can only ever lock *earlier* (e.g. if a match somehow kicks off
+  // before the deadline), never unlock. A missing or unparseable kickoff must not
+  // reopen editing, so we ignore anything that isn't a finite timestamp.
   const col = await matchesCollection();
   const first = await col
     .find({ stage: "GROUP_STAGE" })
@@ -232,5 +239,5 @@ export async function isTournamentLocked(): Promise<boolean> {
   const firstKickoff = first.length
     ? new Date(first[0].utcDate).getTime()
     : Number.POSITIVE_INFINITY;
-  return Date.now() >= Math.min(deadline, firstKickoff);
+  return Number.isFinite(firstKickoff) && now >= firstKickoff;
 }
