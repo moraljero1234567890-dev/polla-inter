@@ -179,10 +179,19 @@ export async function refreshMatches(): Promise<RefreshOutcome> {
   // previously recorded result is never clobbered by a regressed provider doc.
   const ops = incoming.map((doc) => {
     const prev = existingById.get(doc._id);
-    const replacement =
-      isScored(prev) && !isScored(doc)
-        ? { ...doc, status: prev!.status, score: prev!.score }
-        : doc;
+    let replacement = doc;
+    if (prev?.manualScore) {
+      // An admin-entered score always wins over the provider.
+      replacement = {
+        ...doc,
+        status: prev.status,
+        score: prev.score,
+        manualScore: true,
+      };
+    } else if (isScored(prev) && !isScored(doc)) {
+      // Never regress a recorded result back to scheduled / no-score.
+      replacement = { ...doc, status: prev!.status, score: prev!.score };
+    }
     return {
       replaceOne: {
         filter: { _id: replacement._id },
