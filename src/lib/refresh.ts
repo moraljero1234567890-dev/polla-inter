@@ -107,6 +107,34 @@ async function ensureFullGroupSchedule(
   return toInsert.length;
 }
 
+// Correct group matchday labels from the seed. The Wikipedia parser infers the
+// round from page position (floor(idx/2)+1), which mislabels matches when the
+// page order isn't strictly round-by-round. The seed is the authoritative
+// fixture, so we overwrite matchday by team pairing after every refresh.
+async function syncGroupMatchdays(col: Collection<MatchDoc>): Promise<number> {
+  const seedByPair = new Map<string, number>();
+  for (const sm of staticMatches) {
+    if (sm.matchday == null) continue;
+    seedByPair.set(`${sm.group}:${pairKey(sm.home.code, sm.away.code)}`, sm.matchday);
+  }
+  const group = await col.find({ stage: "GROUP_STAGE" }).toArray();
+  const ops = [];
+  for (const g of group) {
+    if (!g.group) continue;
+    const want = seedByPair.get(`${g.group}:${pairKey(g.home.code, g.away.code)}`);
+    if (want != null && g.matchday !== want) {
+      ops.push({
+        updateOne: {
+          filter: { _id: g._id },
+          update: { $set: { matchday: want } },
+        },
+      });
+    }
+  }
+  if (ops.length) await col.bulkWrite(ops, { ordered: false });
+  return ops.length;
+}
+
 function isScored(m: MatchDoc | null | undefined): boolean {
   return Boolean(
     m &&
@@ -209,6 +237,7 @@ export async function refreshMatches(): Promise<RefreshOutcome> {
   if (provider.source === "wikipedia") {
     const afterUpsert = await col.find({}).toArray();
     refilled = await ensureFullGroupSchedule(col, afterUpsert);
+    await syncGroupMatchdays(col);
   }
 
   await col.createIndex({ utcDate: 1 });
