@@ -56,6 +56,21 @@ type LeaderboardStats = {
 
 type Banner = { kind: "ok" | "err"; text: string } | null;
 
+type AdminMatch = {
+  _id: string;
+  group: string | null;
+  stage: string;
+  stageLabel: string;
+  date: string;
+  status: string;
+  home: { name: string };
+  away: { name: string };
+  score?: {
+    fullTime: { home: number; away: number } | null;
+    penalties: { home: number; away: number } | null;
+  } | null;
+};
+
 type DiagnoseResult = {
   summary: {
     matches: number;
@@ -105,6 +120,14 @@ export default function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [diagnosing, setDiagnosing] = useState(false);
   const [diag, setDiag] = useState<DiagnoseResult | null>(null);
+
+  const [adminMatches, setAdminMatches] = useState<AdminMatch[]>([]);
+  const [scoreMatchId, setScoreMatchId] = useState("");
+  const [scoreHome, setScoreHome] = useState("");
+  const [scoreAway, setScoreAway] = useState("");
+  const [scorePenH, setScorePenH] = useState("");
+  const [scorePenA, setScorePenA] = useState("");
+  const [savingScore, setSavingScore] = useState(false);
 
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [editName, setEditName] = useState("");
@@ -439,6 +462,81 @@ export default function AdminPage() {
       });
     } finally {
       setDiagnosing(false);
+    }
+  }
+
+  const loadAdminMatches = useCallback(async () => {
+    try {
+      const res = await fetch("/api/matches");
+      const data = await res.json().catch(() => ({}));
+      if (Array.isArray(data.matches)) setAdminMatches(data.matches);
+    } catch {
+      /* ignore — the score editor just won't have options */
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAdminMatches();
+  }, [loadAdminMatches]);
+
+  // When a match is picked, prefill the inputs with its current score.
+  useEffect(() => {
+    const m = adminMatches.find((x) => x._id === scoreMatchId);
+    const ft = m?.score?.fullTime ?? null;
+    const pen = m?.score?.penalties ?? null;
+    setScoreHome(ft ? String(ft.home) : "");
+    setScoreAway(ft ? String(ft.away) : "");
+    setScorePenH(pen ? String(pen.home) : "");
+    setScorePenA(pen ? String(pen.away) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scoreMatchId]);
+
+  async function handleSetScore(clear = false) {
+    if (!savedToken) {
+      setBanner({ kind: "err", text: "Guarda primero tu token de admin." });
+      return;
+    }
+    if (!scoreMatchId) {
+      setBanner({ kind: "err", text: "Elige un partido." });
+      return;
+    }
+    setSavingScore(true);
+    try {
+      const res = await fetch("/api/admin/set-score", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${savedToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          matchId: scoreMatchId,
+          home: scoreHome,
+          away: scoreAway,
+          penaltiesHome: scorePenH,
+          penaltiesAway: scorePenA,
+          clear,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBanner({ kind: "err", text: data.error ?? `Error ${res.status}` });
+        return;
+      }
+      setBanner({
+        kind: "ok",
+        text: clear
+          ? "Marcador borrado (vuelve a programado)."
+          : `Marcador guardado: ${data.score}${data.penalties ? ` (pen ${data.penalties})` : ""}.`,
+      });
+      await loadAdminMatches();
+      await loadLeaderboard(savedToken);
+    } catch (err) {
+      setBanner({
+        kind: "err",
+        text: err instanceof Error ? err.message : "Error desconocido",
+      });
+    } finally {
+      setSavingScore(false);
     }
   }
 
@@ -886,6 +984,119 @@ export default function AdminPage() {
               </ul>
             </div>
           )}
+
+          <div className="mt-8 border-t border-[var(--line)] pt-6">
+            <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+              Editar marcador (manual)
+            </h3>
+            <p className="mt-2 text-sm text-[var(--foreground-soft)]">
+              Usa esto cuando el proveedor (Wikipedia) no tiene un partido o trae
+              un marcador equivocado. El marcador manual queda fijo y las recargas
+              automáticas ya no lo sobrescriben. Los puntos se recalculan solos.
+            </p>
+
+            <div className="mt-4 grid gap-3">
+              <select
+                value={scoreMatchId}
+                onChange={(e) => setScoreMatchId(e.target.value)}
+                className="h-11 border border-[var(--line)] bg-white px-3 text-sm"
+              >
+                <option value="">— Elige un partido —</option>
+                {[...adminMatches]
+                  .sort((a, b) => a.date.localeCompare(b.date))
+                  .map((m) => {
+                    const ft = m.score?.fullTime;
+                    const label = `${m.stageLabel}${m.group ? ` ${m.group}` : ""} · ${m.home.name} vs ${m.away.name} ${
+                      ft ? `(${ft.home}-${ft.away})` : "(—)"
+                    }${m.status === "SCHEDULED" ? " ·prog" : ""}`;
+                    return (
+                      <option key={m._id} value={m._id}>
+                        {label}
+                      </option>
+                    );
+                  })}
+              </select>
+
+              {scoreMatchId && (
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="text-xs">
+                    <span className="block text-[var(--foreground-muted)]">
+                      {adminMatches.find((m) => m._id === scoreMatchId)?.home.name ??
+                        "Local"}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={scoreHome}
+                      onChange={(e) => setScoreHome(e.target.value)}
+                      className="mt-1 h-11 w-20 border border-[var(--line)] px-3 text-center text-lg font-bold"
+                    />
+                  </label>
+                  <span className="pb-3 text-lg font-bold">–</span>
+                  <label className="text-xs">
+                    <span className="block text-[var(--foreground-muted)]">
+                      {adminMatches.find((m) => m._id === scoreMatchId)?.away.name ??
+                        "Visitante"}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={scoreAway}
+                      onChange={(e) => setScoreAway(e.target.value)}
+                      className="mt-1 h-11 w-20 border border-[var(--line)] px-3 text-center text-lg font-bold"
+                    />
+                  </label>
+
+                  <div className="ml-2 flex items-end gap-2 border-l border-[var(--line)] pl-4">
+                    <label className="text-[10px] uppercase tracking-wide text-[var(--foreground-muted)]">
+                      <span className="block">Penales (opc.)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={scorePenH}
+                        onChange={(e) => setScorePenH(e.target.value)}
+                        placeholder="—"
+                        className="mt-1 h-11 w-16 border border-[var(--line)] px-2 text-center"
+                      />
+                    </label>
+                    <span className="pb-3">–</span>
+                    <label className="text-[10px] uppercase tracking-wide text-[var(--foreground-muted)]">
+                      <span className="block">&nbsp;</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={scorePenA}
+                        onChange={(e) => setScorePenA(e.target.value)}
+                        placeholder="—"
+                        className="mt-1 h-11 w-16 border border-[var(--line)] px-2 text-center"
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {scoreMatchId && (
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleSetScore(false)}
+                    disabled={savingScore || !savedToken}
+                    className="h-11 bg-[var(--brand)] px-5 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingScore ? "Guardando…" : "Guardar marcador"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetScore(true)}
+                    disabled={savingScore || !savedToken}
+                    className="h-11 border border-[var(--line)] px-5 text-sm font-semibold uppercase tracking-[0.18em] transition hover:border-red-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Borrar (volver a programado)
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </section>
 
         <p className="mt-10 text-xs text-[var(--foreground-muted)]">

@@ -39,6 +39,10 @@ export type MatchDoc = {
     halfTime: Score | null;
     penalties: Score | null;
   } | null;
+  // Set by the admin "editar marcador" tool. When true, the auto/refresh from
+  // the provider must NOT overwrite this score — the manual value is authoritative
+  // (used for matches the provider is missing or has wrong).
+  manualScore?: boolean;
 };
 
 export type UserDoc = {
