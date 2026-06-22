@@ -1,6 +1,15 @@
 import { MongoClient, type Db, type Collection } from "mongodb";
 import type { MatchDoc, PredictionDoc, UserDoc } from "./types";
 
+// Bookkeeping singletons keyed by a string _id (e.g. the auto-refresh lock).
+export type MetaDoc = {
+  _id: string;
+  lastAttemptAt?: Date;
+  lastSuccessAt?: Date;
+  lastSource?: string | null;
+  lastSkipped?: string | null;
+};
+
 declare global {
   // eslint-disable-next-line no-var
   var _mongoClientPromise: Promise<MongoClient> | undefined;
@@ -43,6 +52,13 @@ export async function predictionsCollection(): Promise<
 > {
   const db = await getDb();
   return db.collection<PredictionDoc>("predictions");
+}
+
+// Small key/value collection for bookkeeping (e.g. the auto-refresh throttle
+// lock). Holds a handful of singleton docs keyed by a string _id.
+export async function metaCollection(): Promise<Collection<MetaDoc>> {
+  const db = await getDb();
+  return db.collection<MetaDoc>("meta");
 }
 
 export default getClientPromise;

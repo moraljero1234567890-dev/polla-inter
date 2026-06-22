@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { matchesCollection } from "@/lib/mongodb";
-import { fetchLatestFromConfiguredProvider } from "@/lib/providers";
+import { refreshMatches } from "@/lib/refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +18,9 @@ function authorized(request: NextRequest): boolean {
 }
 
 async function handleRefresh(): Promise<Response> {
-  let provider;
+  let result;
   try {
-    provider = await fetchLatestFromConfiguredProvider();
+    result = await refreshMatches();
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Provider error" },
@@ -29,24 +28,13 @@ async function handleRefresh(): Promise<Response> {
     );
   }
 
-  if (!provider.docs.length) {
-    return NextResponse.json(
-      {
-        source: provider.source,
-        upserts: 0,
-        warning: "Provider returned 0 matches",
-      },
-      { status: 200 },
-    );
-  }
-
-  const col = await matchesCollection();
-  await col.deleteMany({});
-  await col.insertMany(provider.docs);
-  await col.createIndex({ utcDate: 1 });
-  await col.createIndex({ stage: 1, group: 1, matchday: 1 });
-
-  return NextResponse.json({ source: provider.source, upserts: provider.docs.length });
+  // upserts kept for backwards compatibility with the admin UI; `skipped`
+  // explains the no-op cases (provider empty, refused source switch, …).
+  return NextResponse.json({
+    source: result.source,
+    upserts: result.updated,
+    skipped: result.skipped ?? null,
+  });
 }
 
 export async function POST(request: NextRequest) {

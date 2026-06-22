@@ -56,6 +56,39 @@ type LeaderboardStats = {
 
 type Banner = { kind: "ok" | "err"; text: string } | null;
 
+type DiagnoseResult = {
+  summary: {
+    matches: number;
+    predictions: number;
+    bySource: Record<string, number>;
+    byStatus: Record<string, number>;
+    groupMatches: number;
+    finishedGroupMatches: number;
+  };
+  diagnostics: {
+    finishedWithoutScore: {
+      count: number;
+      items: { id: string; stage: string; teams: string }[];
+    };
+    groupKeyAlignment: {
+      totalKeys: number;
+      matchedKeys: number;
+      unmatchedKeys: number;
+      sampleUnmatchedKeys: string[];
+      sampleCurrentGroupIds: string[];
+    };
+    finishedGroupMatchesWithNoMatchingPrediction: {
+      count: number;
+      items: { id: string; teams: string }[];
+    };
+    knockoutCodeAlignment: {
+      sampleMatchCodes: string[];
+      samplePredCodes: string[];
+      predCodesMissingInMatches: string[];
+    };
+  };
+};
+
 export default function AdminPage() {
   const [token, setToken] = useState("");
   const [savedToken, setSavedToken] = useState("");
@@ -70,6 +103,8 @@ export default function AdminPage() {
   const [creating, setCreating] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diag, setDiag] = useState<DiagnoseResult | null>(null);
 
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [editName, setEditName] = useState("");
@@ -365,7 +400,9 @@ export default function AdminPage() {
       }
       setBanner({
         kind: "ok",
-        text: `${data.upserts} partidos cargados desde ${data.source}.`,
+        text: data.skipped
+          ? `Sin cambios (${data.skipped}).`
+          : `${data.upserts} partidos actualizados desde ${data.source}.`,
       });
       await loadLeaderboard(savedToken);
     } catch (err) {
@@ -375,6 +412,33 @@ export default function AdminPage() {
       });
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function handleDiagnose() {
+    if (!savedToken) {
+      setBanner({ kind: "err", text: "Guarda primero tu token de admin." });
+      return;
+    }
+    setDiagnosing(true);
+    try {
+      const res = await fetch("/api/admin/diagnose", {
+        headers: { authorization: `Bearer ${savedToken}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBanner({ kind: "err", text: data.error ?? `Error ${res.status}` });
+        return;
+      }
+      setDiag(data as DiagnoseResult);
+      setBanner(null);
+    } catch (err) {
+      setBanner({
+        kind: "err",
+        text: err instanceof Error ? err.message : "Error desconocido",
+      });
+    } finally {
+      setDiagnosing(false);
     }
   }
 
@@ -707,18 +771,121 @@ export default function AdminPage() {
             5 · Partidos del Mundial
           </h2>
           <p className="mt-3 text-sm text-[var(--foreground-soft)]">
-            Se cargan automáticamente la primera vez que alguien abre el
-            dashboard. Si quieres forzar una recarga desde Wikipedia (o tu
-            proveedor configurado), usa el botón.
+            Los marcadores ahora se actualizan solos: cada vez que alguien abre
+            el dashboard o la tabla, la app revisa el proveedor (como máximo una
+            vez cada 10 minutos) y guarda los resultados nuevos. Ya no necesitas
+            refrescar a mano — el botón queda como recarga manual opcional.
           </p>
-          <button
-            type="button"
-            onClick={handleRefreshMatches}
-            disabled={refreshing || !savedToken}
-            className="mt-4 h-11 border border-[var(--foreground)] px-5 text-sm font-semibold uppercase tracking-[0.18em] transition hover:bg-[var(--foreground)] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {refreshing ? "Cargando…" : "Refrescar partidos"}
-          </button>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleRefreshMatches}
+              disabled={refreshing || !savedToken}
+              className="h-11 border border-[var(--foreground)] px-5 text-sm font-semibold uppercase tracking-[0.18em] transition hover:bg-[var(--foreground)] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {refreshing ? "Cargando…" : "Refrescar partidos"}
+            </button>
+            <button
+              type="button"
+              onClick={handleDiagnose}
+              disabled={diagnosing || !savedToken}
+              className="h-11 border border-[var(--line)] px-5 text-sm font-semibold uppercase tracking-[0.18em] transition hover:border-[var(--brand)] hover:text-[var(--brand)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {diagnosing ? "Revisando…" : "Diagnóstico de puntos"}
+            </button>
+          </div>
+
+          {diag && (
+            <div className="mt-6 border border-[var(--line)] bg-[var(--background)] p-5 text-sm">
+              <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+                Diagnóstico
+              </h3>
+              <ul className="mt-3 grid gap-2">
+                <li>
+                  Partidos: <b>{diag.summary.matches}</b> · Terminados de grupos:{" "}
+                  <b>{diag.summary.finishedGroupMatches}</b> · Predicciones:{" "}
+                  <b>{diag.summary.predictions}</b>
+                </li>
+                <li>
+                  Fuente de datos:{" "}
+                  <b>
+                    {Object.entries(diag.summary.bySource)
+                      .map(([s, n]) => `${s} (${n})`)
+                      .join(", ") || "—"}
+                  </b>
+                </li>
+                <li
+                  className={
+                    diag.diagnostics.finishedWithoutScore.count > 0
+                      ? "text-red-600"
+                      : ""
+                  }
+                >
+                  Partidos terminados <b>sin marcador</b> (dan 0 puntos):{" "}
+                  <b>{diag.diagnostics.finishedWithoutScore.count}</b>
+                  {diag.diagnostics.finishedWithoutScore.count > 0 && (
+                    <span>
+                      {" "}
+                      —{" "}
+                      {diag.diagnostics.finishedWithoutScore.items
+                        .map((i) => i.teams)
+                        .join("; ")}
+                    </span>
+                  )}
+                </li>
+                <li
+                  className={
+                    diag.diagnostics.groupKeyAlignment.unmatchedKeys > 0
+                      ? "text-red-600"
+                      : "text-emerald-700"
+                  }
+                >
+                  Predicciones de grupos <b>vinculadas</b> a un partido real:{" "}
+                  <b>
+                    {diag.diagnostics.groupKeyAlignment.matchedKeys}/
+                    {diag.diagnostics.groupKeyAlignment.totalKeys}
+                  </b>
+                  {diag.diagnostics.groupKeyAlignment.unmatchedKeys > 0 && (
+                    <span>
+                      {" "}
+                      — ⚠️ hay{" "}
+                      {diag.diagnostics.groupKeyAlignment.unmatchedKeys}{" "}
+                      predicciones huérfanas (sus IDs no coinciden con los
+                      partidos actuales). Ejemplo de claves:{" "}
+                      <code>
+                        {diag.diagnostics.groupKeyAlignment.sampleUnmatchedKeys.join(
+                          ", ",
+                        )}
+                      </code>{" "}
+                      vs partidos:{" "}
+                      <code>
+                        {diag.diagnostics.groupKeyAlignment.sampleCurrentGroupIds.join(
+                          ", ",
+                        )}
+                      </code>
+                    </span>
+                  )}
+                </li>
+                <li
+                  className={
+                    diag.diagnostics.knockoutCodeAlignment
+                      .predCodesMissingInMatches.length > 0
+                      ? "text-amber-600"
+                      : ""
+                  }
+                >
+                  Códigos de equipo de eliminatorias que no aparecen en los
+                  partidos:{" "}
+                  <b>
+                    {
+                      diag.diagnostics.knockoutCodeAlignment
+                        .predCodesMissingInMatches.length
+                    }
+                  </b>
+                </li>
+              </ul>
+            </div>
+          )}
         </section>
 
         <p className="mt-10 text-xs text-[var(--foreground-muted)]">
