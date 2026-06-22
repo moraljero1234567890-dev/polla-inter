@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { computeLeaderboard } from "@/lib/scoring";
+import { maybeAutoRefresh } from "@/lib/refresh";
 import {
   getAllMatches,
   listAllPredictions,
@@ -18,6 +19,11 @@ export async function GET() {
       listAllPredictions(),
       listAllUsers(),
     ]);
+    // Pull fresh scores AFTER this response is sent (throttled, at most once per
+    // window across all visitors, lock-guarded). The next visitor sees the new
+    // data — keeps the page fast and avoids the platform timeout on slow
+    // providers like Wikipedia.
+    after(() => maybeAutoRefresh(matches));
     const full = computeLeaderboard(
       matches,
       predictions,
