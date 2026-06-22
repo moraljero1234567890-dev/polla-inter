@@ -265,7 +265,7 @@ export default function DashboardPage() {
                           href={`/dashboard/results/${row.attempt}`}
                           className="inline-flex h-11 items-center justify-center border border-[var(--foreground)] px-5 text-sm font-semibold uppercase tracking-[0.18em] transition hover:bg-[var(--foreground)] hover:text-white"
                         >
-                          Ver resultados
+                          Comparar resultados
                         </Link>
                       )}
                     </div>
