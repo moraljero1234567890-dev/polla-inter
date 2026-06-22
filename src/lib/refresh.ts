@@ -1,6 +1,8 @@
 import "server-only";
 import { matchesCollection, metaCollection } from "./mongodb";
 import { fetchLatestFromConfiguredProvider } from "./providers";
+import { matches as staticMatches, flagSrc } from "@/data/worldcup2026";
+import type { Collection } from "mongodb";
 import type { MatchDoc } from "./types";
 
 // How often the auto-refresh-on-read is allowed to actually hit the provider.
@@ -14,6 +16,96 @@ export type RefreshOutcome = {
   updated: number;
   skipped?: string;
 };
+
+function pairKey(a: string, b: string): string {
+  return [a, b].sort().join("|");
+}
+
+// Self-healing safety net for the Wikipedia source: the scraper (and Wikipedia
+// itself) sometimes omits a match, which used to make it vanish from the DB and
+// orphan everyone's prediction for that game. Here we guarantee the full 72-match
+// group schedule always exists, refilling any gap from the canonical seed under
+// the SAME `wiki-G<letter><slot>` id the predictions use. Reinserted matches are
+// SCHEDULED with no score; a later refresh fills the score if/when the provider
+// lists them. Existing matches are never touched. Returns the number refilled.
+async function ensureFullGroupSchedule(
+  col: Collection<MatchDoc>,
+  existing: MatchDoc[],
+): Promise<number> {
+  const existingByGroup = new Map<string, MatchDoc[]>();
+  for (const m of existing) {
+    if (m.stage !== "GROUP_STAGE" || !m.group) continue;
+    const list = existingByGroup.get(m.group) ?? [];
+    list.push(m);
+    existingByGroup.set(m.group, list);
+  }
+
+  const groups = [...new Set(staticMatches.map((m) => m.group))];
+  const toInsert: MatchDoc[] = [];
+
+  for (const letter of groups) {
+    const seedMatches = staticMatches.filter((m) => m.group === letter);
+    const present = existingByGroup.get(letter) ?? [];
+    const presentPairs = new Set(
+      present.map((m) => pairKey(m.home.code, m.away.code)),
+    );
+    const presentSlots = new Set(
+      present
+        .map((m) => /wiki-G[A-Z](\d+)$/.exec(m._id)?.[1])
+        .filter((s): s is string => Boolean(s))
+        .map(Number),
+    );
+
+    const missing = seedMatches.filter(
+      (sm) => !presentPairs.has(pairKey(sm.home.code, sm.away.code)),
+    );
+    if (!missing.length) continue;
+
+    const freeSlots: number[] = [];
+    for (let s = 1; s <= 6; s++) if (!presentSlots.has(s)) freeSlots.push(s);
+
+    // Deterministic order so slot assignment is stable across runs.
+    missing.sort((a, b) => a.matchday - b.matchday || a.date.localeCompare(b.date));
+    missing.forEach((sm, i) => {
+      const slot = freeSlots[i];
+      if (!slot) return;
+      const utcDate = new Date(`${sm.date}T${sm.time}:00-05:00`).toISOString();
+      toInsert.push({
+        _id: `wiki-G${letter}${slot}`,
+        source: "wikipedia",
+        externalId: `G${letter}${slot}`,
+        utcDate,
+        date: sm.date,
+        time: sm.time,
+        status: "SCHEDULED",
+        stage: "GROUP_STAGE",
+        stageLabel: "Fase de Grupos",
+        group: letter,
+        matchday: sm.matchday,
+        venue: sm.venue,
+        city: sm.city,
+        home: { code: sm.home.code, name: sm.home.name, crest: flagSrc(sm.home.code, 80) },
+        away: { code: sm.away.code, name: sm.away.name, crest: flagSrc(sm.away.code, 80) },
+        score: null,
+      });
+    });
+  }
+
+  if (toInsert.length) {
+    await col.bulkWrite(
+      toInsert.map((d) => ({
+        // insert-only: never overwrite a match that already exists.
+        updateOne: {
+          filter: { _id: d._id },
+          update: { $setOnInsert: d },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  }
+  return toInsert.length;
+}
 
 function isScored(m: MatchDoc | null | undefined): boolean {
   return Boolean(
@@ -101,10 +193,23 @@ export async function refreshMatches(): Promise<RefreshOutcome> {
   });
 
   if (ops.length) await col.bulkWrite(ops, { ordered: false });
+
+  // Backfill any group match the provider omitted so a Wikipedia gap can never
+  // again make a predicted game disappear.
+  let refilled = 0;
+  if (provider.source === "wikipedia") {
+    const afterUpsert = await col.find({}).toArray();
+    refilled = await ensureFullGroupSchedule(col, afterUpsert);
+  }
+
   await col.createIndex({ utcDate: 1 });
   await col.createIndex({ stage: 1, group: 1, matchday: 1 });
 
-  return { ok: true, source: provider.source, updated: ops.length };
+  return {
+    ok: true,
+    source: provider.source,
+    updated: ops.length + refilled,
+  };
 }
 
 // Decide whether the tournament is "live" enough to be worth polling. Outside
