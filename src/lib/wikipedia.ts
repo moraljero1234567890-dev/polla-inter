@@ -385,17 +385,64 @@ export type WikipediaMatchOptions = {
   externalId: string;
 };
 
+const MONTHS: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+
+// Accepts either an already-ISO date (from {{Start date}} being unwrapped)
+// or a plain-text date like "28 June 2026" / "June 28, 2026". New knockout
+// pages (like Round of 32, introduced for 2026) are more likely to have been
+// hand-written by editors without the {{Start date}} template, which used to
+// make toMatchDoc silently drop every match on that page.
+function parseDateField(raw: string): string | null {
+  const s = unwrapTemplates(raw).trim();
+
+  const iso = /(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  const dmY = /(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/.exec(s);
+  if (dmY) {
+    const month = MONTHS[dmY[2].toLowerCase()];
+    if (month) {
+      return `${dmY[3]}-${String(month).padStart(2, "0")}-${dmY[1].padStart(2, "0")}`;
+    }
+  }
+
+  const mdY = /([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/.exec(s);
+  if (mdY) {
+    const month = MONTHS[mdY[1].toLowerCase()];
+    if (month) {
+      return `${mdY[3]}-${String(month).padStart(2, "0")}-${mdY[2].padStart(2, "0")}`;
+    }
+  }
+
+  return null;
+}
+
 function toMatchDoc(
   fields: Record<string, string>,
   opts: WikipediaMatchOptions,
 ): MatchDoc | null {
   const home = teamFromField(fields.team1 ?? "");
   const away = teamFromField(fields.team2 ?? "");
-  if (!home || !away) return null;
-  const dateRaw = unwrapTemplates(fields.date ?? "").trim();
-  const dateMatch = /(\d{4})-(\d{2})-(\d{2})/.exec(dateRaw);
-  if (!dateMatch) return null;
-  const localDate = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+  if (!home || !away) {
+    console.warn(
+      `[wikipedia] dropped box (${opts.stage}), unparseable team: ` +
+        `team1="${fields.team1 ?? ""}", team2="${fields.team2 ?? ""}"`,
+    );
+    return null;
+  }
+
+  const localDate = parseDateField(fields.date ?? "");
+  if (!localDate) {
+    console.warn(
+      `[wikipedia] dropped box (${opts.stage}), unparseable date: "${fields.date ?? ""}" ` +
+        `(${home.name} vs ${away.name})`,
+    );
+    return null;
+  }
+
   const local = parseLocalTime(fields.time ?? "") ?? {
     hour: 0,
     minute: 0,
@@ -605,7 +652,13 @@ const ROUND_PAGE_CANDIDATES: Array<{
   stageLabel: string;
 }> = [
   {
-    pages: ["2026_FIFA_World_Cup_round_of_32"],
+    // The Round of 32 is new for 2026; Wikipedia may call it several things
+    pages: [
+      "2026_FIFA_World_Cup_round_of_32",
+      "2026_FIFA_World_Cup_Round_of_32",
+      "2026_FIFA_World_Cup_first_round",
+      "2026_FIFA_World_Cup_First_round",
+    ],
     stage: "ROUND_OF_32",
     stageLabel: "Dieciseisavos",
   },

@@ -71,6 +71,13 @@ type AdminMatch = {
   } | null;
 };
 
+type KnockoutStageEntry = {
+  label: string;
+  total: number;
+  finished: number;
+  matches: { home: string; away: string; score: string | null; penalties: string | null; id: string }[];
+};
+
 type DiagnoseResult = {
   summary: {
     matches: number;
@@ -80,6 +87,7 @@ type DiagnoseResult = {
     groupMatches: number;
     finishedGroupMatches: number;
   };
+  knockoutByStage?: Record<string, KnockoutStageEntry>;
   diagnostics: {
     finishedWithoutScore: {
       count: number;
@@ -131,6 +139,17 @@ export default function AdminPage() {
   const [scorePenH, setScorePenH] = useState("");
   const [scorePenA, setScorePenA] = useState("");
   const [savingScore, setSavingScore] = useState(false);
+
+  const [cmStage, setCmStage] = useState("ROUND_OF_16");
+  const [cmHome, setCmHome] = useState("");
+  const [cmAway, setCmAway] = useState("");
+  const [cmHomeScore, setCmHomeScore] = useState("");
+  const [cmAwayScore, setCmAwayScore] = useState("");
+  const [cmPenH, setCmPenH] = useState("");
+  const [cmPenA, setCmPenA] = useState("");
+  const [cmDate, setCmDate] = useState("");
+  const [savingCm, setSavingCm] = useState(false);
+  const [cmResult, setCmResult] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [editName, setEditName] = useState("");

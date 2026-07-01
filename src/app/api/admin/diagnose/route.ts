@@ -79,6 +79,51 @@ export async function GET(request: NextRequest) {
   }
   const codesMissingInMatches = [...predCodes].filter((c) => !matchCodes.has(c));
 
+  // Knockout stage breakdown — key health check for whether match data exists.
+  const KNOCKOUT_STAGE_ORDER = [
+    "ROUND_OF_32",
+    "ROUND_OF_16",
+    "QUARTER_FINALS",
+    "SEMI_FINALS",
+    "THIRD_PLACE",
+    "FINAL",
+  ] as const;
+  const STAGE_LABEL: Record<string, string> = {
+    ROUND_OF_32: "Dieciseisavos (R32)",
+    ROUND_OF_16: "Octavos (R16)",
+    QUARTER_FINALS: "Cuartos de final",
+    SEMI_FINALS: "Semifinales",
+    THIRD_PLACE: "Tercer puesto",
+    FINAL: "Final",
+  };
+  const knockoutByStage: Record<
+    string,
+    { label: string; total: number; finished: number; matches: { home: string; away: string; score: string | null; penalties: string | null; id: string }[] }
+  > = {};
+  for (const s of KNOCKOUT_STAGE_ORDER) {
+    knockoutByStage[s] = { label: STAGE_LABEL[s], total: 0, finished: 0, matches: [] };
+  }
+  for (const m of matches) {
+    if (m.stage === "GROUP_STAGE") continue;
+    const entry = knockoutByStage[m.stage];
+    if (!entry) continue;
+    entry.total++;
+    if (m.status === "FINISHED") {
+      entry.finished++;
+      entry.matches.push({
+        home: m.home?.code ?? "?",
+        away: m.away?.code ?? "?",
+        score: m.score?.fullTime != null
+          ? `${m.score.fullTime.home}-${m.score.fullTime.away}`
+          : null,
+        penalties: m.score?.penalties != null
+          ? `${m.score.penalties.home}-${m.score.penalties.away}`
+          : null,
+        id: m._id,
+      });
+    }
+  }
+
   const finishedList = matches
     .filter((m) => m.status === "FINISHED")
     .sort((a, b) => (a.utcDate < b.utcDate ? -1 : 1))
@@ -106,6 +151,7 @@ export async function GET(request: NextRequest) {
       groupMatches: group.length,
       finishedGroupMatches: finishedGroup.length,
     },
+    knockoutByStage,
     diagnostics: {
       finishedWithoutScore: { count: finishedNoScore.length, items: finishedNoScore },
       groupKeyAlignment: {
