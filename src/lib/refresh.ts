@@ -49,25 +49,17 @@ async function ensureFullGroupSchedule(
     const presentPairs = new Set(
       present.map((m) => pairKey(m.home.code, m.away.code)),
     );
-    const presentSlots = new Set(
-      present
-        .map((m) => /wiki-G[A-Z](\d+)$/.exec(m._id)?.[1])
-        .filter((s): s is string => Boolean(s))
-        .map(Number),
-    );
 
     const missing = seedMatches.filter(
       (sm) => !presentPairs.has(pairKey(sm.home.code, sm.away.code)),
     );
     if (!missing.length) continue;
 
-    const freeSlots: number[] = [];
-    for (let s = 1; s <= 6; s++) if (!presentSlots.has(s)) freeSlots.push(s);
-
-    // Deterministic order so slot assignment is stable across runs.
-    missing.sort((a, b) => a.matchday - b.matchday || a.date.localeCompare(b.date));
-    missing.forEach((sm, i) => {
-      const slot = freeSlots[i];
+    missing.forEach((sm) => {
+      // Slot is the canonical seed position (1-based, seed file order) for this
+      // fixture — the SAME slot the Wikipedia parser binds by team pairing — so a
+      // backfilled match lands on the exact id its predictions are keyed to.
+      const slot = seedMatches.indexOf(sm) + 1;
       if (!slot) return;
       const utcDate = new Date(`${sm.date}T${sm.time}:00-05:00`).toISOString();
       toInsert.push({
@@ -105,6 +97,44 @@ async function ensureFullGroupSchedule(
     );
   }
   return toInsert.length;
+}
+
+// Remove group-stage docs whose _id slot doesn't match the team pair the seed
+// assigns to that slot. This happens when an older run used position-based slot
+// assignment and Wikipedia later reordered its match boxes: the wrong-pair doc
+// occupies the slot and blocks ensureFullGroupSchedule's $setOnInsert, so the
+// correct match never gets backfilled. Only removes docs without manualScore.
+async function removeStaleGroupDocs(
+  col: Collection<MatchDoc>,
+  existing: MatchDoc[],
+): Promise<number> {
+  // Build the expected canonical pair for every slot from the seed.
+  const expectedPairBySlot = new Map<string, string>(); // "wiki-GA1" -> "kr|mx" (sorted)
+  const counters = new Map<string, number>();
+  for (const sm of staticMatches) {
+    const slot = (counters.get(sm.group) ?? 0) + 1;
+    counters.set(sm.group, slot);
+    expectedPairBySlot.set(
+      `wiki-G${sm.group}${slot}`,
+      pairKey(sm.home.code, sm.away.code),
+    );
+  }
+
+  const toDelete: string[] = [];
+  for (const m of existing) {
+    if (m.stage !== "GROUP_STAGE") continue;
+    if (!m._id.startsWith("wiki-G")) continue;
+    if (m.manualScore) continue; // never auto-delete admin-entered results
+    const expected = expectedPairBySlot.get(m._id);
+    if (!expected) continue; // unknown slot, leave alone
+    const actual = pairKey(m.home.code, m.away.code);
+    if (actual !== expected) toDelete.push(m._id);
+  }
+
+  if (toDelete.length) {
+    await col.deleteMany({ _id: { $in: toDelete } } as Parameters<typeof col.deleteMany>[0]);
+  }
+  return toDelete.length;
 }
 
 // Correct group matchday labels from the seed. The Wikipedia parser infers the
@@ -236,7 +266,12 @@ export async function refreshMatches(): Promise<RefreshOutcome> {
   let refilled = 0;
   if (provider.source === "wikipedia") {
     const afterUpsert = await col.find({}).toArray();
-    refilled = await ensureFullGroupSchedule(col, afterUpsert);
+    // First remove any docs whose slot ID doesn't match the seed's expected
+    // team pair — stale docs from old position-based assignment block the
+    // $setOnInsert backfill below, leaving correct matches permanently absent.
+    await removeStaleGroupDocs(col, afterUpsert);
+    const afterCleanup = await col.find({ stage: "GROUP_STAGE" }).toArray();
+    refilled = await ensureFullGroupSchedule(col, afterCleanup);
     await syncGroupMatchdays(col);
   }
 

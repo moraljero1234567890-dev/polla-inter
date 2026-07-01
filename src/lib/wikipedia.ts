@@ -1,4 +1,35 @@
 import type { MatchDoc, MatchStage } from "./types";
+import { matches as staticMatches } from "@/data/worldcup2026";
+
+function groupPairKey(a: string, b: string): string {
+  return [a.toLowerCase(), b.toLowerCase()].sort().join("|");
+}
+
+// Canonical slot + matchday for every group fixture, keyed by the unordered team
+// pair. The seed file order within a group defines the slot (1-based), which is
+// exactly the `wiki-G<letter><slot>` id scheme predictions are stored under.
+//
+// We bind a match's id to the TEAMS, not to its position on the Wikipedia page.
+// Wikipedia reorders match boxes and briefly drops them while editors update the
+// page live; a position-based id then silently rebinds an id (e.g. wiki-GF4) to a
+// different fixture, so every prediction keyed to it shows another game's score.
+// Resolving the slot from the seed pairing keeps each fixture's id stable no
+// matter how the page is ordered.
+const SEED_GROUP_SLOTS: Map<
+  string,
+  Map<string, { slot: number; matchday: number }>
+> = (() => {
+  const byGroup = new Map<string, Map<string, { slot: number; matchday: number }>>();
+  const counters = new Map<string, number>();
+  for (const m of staticMatches) {
+    const slot = (counters.get(m.group) ?? 0) + 1;
+    counters.set(m.group, slot);
+    const inner = byGroup.get(m.group) ?? new Map();
+    inner.set(groupPairKey(m.home.code, m.away.code), { slot, matchday: m.matchday });
+    byGroup.set(m.group, inner);
+  }
+  return byGroup;
+})();
 
 const UA = "PollaInter/1.0 (info@tirepro.com.co)";
 
@@ -424,19 +455,37 @@ const KNOCKOUT_STAGES: Record<string, { stage: MatchStage; stageLabel: string }>
 async function parseGroupPage(letter: string): Promise<MatchDoc[]> {
   const page = `2026_FIFA_World_Cup_Group_${letter}`;
   const wt = await fetchWikitext(page);
-  const start = wt.indexOf("==Matches==");
-  if (start < 0) return [];
+  // Wikipedia editors use both "==Matches==" and "== Matches ==" (with spaces),
+  // and the casing or wording may vary while pages are actively edited. Accept
+  // any of the common variants so a single editor whitespace change can't silently
+  // drop an entire group from the scrape.
+  const headingMatch = /==\s*(?:Matches|Results|Group matches)\s*==/i.exec(wt);
+  if (!headingMatch) return [];
+  const start = headingMatch.index;
   const sliced = wt.slice(start);
   const boxes = extractFootballBoxes(sliced);
+  const seedSlots = SEED_GROUP_SLOTS.get(letter);
   return boxes
     .map((fields, idx) => {
-      const matchday = Math.floor(idx / 2) + 1;
+      // Resolve the stable slot from the team pairing (seed) so the id never
+      // tracks Wikipedia's fluctuating box order. Fall back to page position only
+      // for a box whose teams aren't in the seed (e.g. a stray/placeholder row).
+      const home = teamFromField(fields.team1 ?? "");
+      const away = teamFromField(fields.team2 ?? "");
+      const homeIso = home?.code ? (FIFA_TO_ISO[home.code] ?? home.code) : "";
+      const awayIso = away?.code ? (FIFA_TO_ISO[away.code] ?? away.code) : "";
+      const seed =
+        homeIso && awayIso
+          ? seedSlots?.get(groupPairKey(homeIso, awayIso))
+          : undefined;
+      const slot = seed?.slot ?? idx + 1;
+      const matchday = seed?.matchday ?? Math.floor(idx / 2) + 1;
       return toMatchDoc(fields, {
         groupKey: letter,
         matchday,
         stage: "GROUP_STAGE",
         stageLabel: "Fase de Grupos",
-        externalId: `G${letter}${idx + 1}`,
+        externalId: `G${letter}${slot}`,
       });
     })
     .filter((d): d is MatchDoc => d != null);

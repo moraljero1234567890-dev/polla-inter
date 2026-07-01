@@ -151,6 +151,26 @@ export default function ResultsPage() {
     [matches],
   );
 
+  const matchesByGroup = useMemo(() => {
+    const map: Record<string, typeof groupMatches> = {};
+    for (const m of groupMatches) {
+      if (!m.group) continue;
+      (map[m.group] ??= []).push(m);
+    }
+    for (const list of Object.values(map)) {
+      list.sort((a, b) => {
+        const md = (a.matchday ?? 0) - (b.matchday ?? 0);
+        return md !== 0 ? md : a.date.localeCompare(b.date);
+      });
+    }
+    return map;
+  }, [groupMatches]);
+
+  const groupKeys = useMemo(
+    () => Object.keys(matchesByGroup).sort(),
+    [matchesByGroup],
+  );
+
   function handleLogout() {
     clearSession();
     router.replace("/login");
@@ -243,86 +263,100 @@ export default function ResultsPage() {
               <h2 className="border-b border-[var(--foreground)] pb-2 font-mono text-xs font-bold uppercase tracking-[0.3em]">
                 Fase de grupos
               </h2>
-              <ul className="mt-6 grid gap-3">
-                {groupMatches.map((m) => {
-                  const predicted = prediction.groupScores[m._id] ?? null;
-                  const actual = m.score?.fullTime ?? null;
-                  const homeT = normalizeTeam(m.home);
-                  const awayT = normalizeTeam(m.away);
+              <div className="mt-6 grid gap-8">
+                {groupKeys.map((letter) => {
+                  const gMatches = matchesByGroup[letter] ?? [];
                   return (
-                    <li
-                      key={m._id}
-                      className={`grid grid-cols-1 items-center gap-3 border p-4 md:grid-cols-[120px_1fr_auto_1fr_auto] ${pickClass(
-                        predicted,
-                        actual,
-                      )}`}
-                    >
-                      <div className="hidden font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)] md:block">
-                        <div>{formatDate(m.date)}</div>
-                        <div>Grupo {m.group}</div>
-                      </div>
-                      <div className="flex items-center gap-3 md:justify-end">
-                        <span className="text-right text-base font-bold uppercase tracking-tight">
-                          {homeT.name}
-                        </span>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={homeT.crest}
-                          alt=""
-                          aria-hidden
-                          className="h-9 w-12 border border-[var(--line)] object-cover"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-center font-mono text-sm">
-                        <div>
-                          <div className="text-[9px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
-                            Tú
-                          </div>
-                          <div className="mt-1 text-2xl font-black tabular-nums">
-                            {predicted
-                              ? `${predicted.home}–${predicted.away}`
-                              : "—"}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[9px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
-                            Real
-                          </div>
-                          <div className="mt-1 text-2xl font-black tabular-nums">
-                            {actual
-                              ? `${actual.home}–${actual.away}`
-                              : "—"}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={awayT.crest}
-                          alt=""
-                          aria-hidden
-                          className="h-9 w-12 border border-[var(--line)] object-cover"
-                        />
-                        <span className="text-base font-bold uppercase tracking-tight">
-                          {awayT.name}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)] md:flex-col md:items-end">
-                        {detail?.groups[m._id] && (
-                          <PointsBadge points={detail.groups[m._id].points} />
-                        )}
-                        <span>
-                          {m.status === "FINISHED"
-                            ? "Final"
-                            : m.status === "IN_PLAY"
-                              ? "En juego"
-                              : "Programado"}
-                        </span>
-                      </div>
-                    </li>
+                    <div key={letter}>
+                      <h3 className="mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-[var(--foreground-muted)]">
+                        Grupo {letter}
+                      </h3>
+                      <ul className="grid gap-3">
+                        {gMatches.map((m) => {
+                          const predicted = prediction.groupScores[m._id] ?? null;
+                          const actual = m.score?.fullTime ?? null;
+                          const homeT = normalizeTeam(m.home);
+                          const awayT = normalizeTeam(m.away);
+                          return (
+                            <li
+                              key={m._id}
+                              className={`grid grid-cols-1 items-center gap-3 border p-4 md:grid-cols-[120px_1fr_auto_1fr_auto] ${pickClass(
+                                predicted,
+                                actual,
+                              )}`}
+                            >
+                              <div className="hidden font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)] md:block">
+                                <div>{formatDate(m.date)}</div>
+                                <div>Jornada {m.matchday ?? "—"}</div>
+                              </div>
+                              <div className="flex items-center gap-3 md:justify-end">
+                                <span className="text-right text-base font-bold uppercase tracking-tight">
+                                  {homeT.name}
+                                </span>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={homeT.crest}
+                                  alt=""
+                                  aria-hidden
+                                  className="h-9 w-12 border border-[var(--line)] object-cover"
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 text-center font-mono text-sm">
+                                <div>
+                                  <div className="text-[9px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+                                    Tú
+                                  </div>
+                                  <div className="mt-1 text-2xl font-black tabular-nums">
+                                    {predicted
+                                      ? `${predicted.home}–${predicted.away}`
+                                      : "—"}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[9px] uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+                                    Real
+                                  </div>
+                                  <div className="mt-1 text-2xl font-black tabular-nums">
+                                    {actual
+                                      ? `${actual.home}–${actual.away}`
+                                      : m.status === "FINISHED"
+                                        ? "—"
+                                        : "Pendiente"}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={awayT.crest}
+                                  alt=""
+                                  aria-hidden
+                                  className="h-9 w-12 border border-[var(--line)] object-cover"
+                                />
+                                <span className="text-base font-bold uppercase tracking-tight">
+                                  {awayT.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.28em] text-[var(--foreground-muted)] md:flex-col md:items-end">
+                                {detail?.groups[m._id] && (
+                                  <PointsBadge points={detail.groups[m._id].points} />
+                                )}
+                                <span>
+                                  {m.status === "FINISHED"
+                                    ? "Final"
+                                    : m.status === "IN_PLAY"
+                                      ? "En juego"
+                                      : "Programado"}
+                                </span>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
                   );
                 })}
-              </ul>
+              </div>
             </section>
 
             <section className="mx-auto max-w-6xl px-6 pb-16">
