@@ -516,27 +516,79 @@ async function parseGroupPage(letter: string): Promise<MatchDoc[]> {
     .filter((d): d is MatchDoc => d != null);
 }
 
+// Try to fetch all football boxes from a list of candidate Wikipedia page names,
+// returning the first page that yields at least one parseable match doc.
+async function fetchKnockoutRound(
+  pageNames: string[],
+  stage: MatchStage,
+  stageLabel: string,
+): Promise<MatchDoc[]> {
+  for (const page of pageNames) {
+    try {
+      const wt = await fetchWikitext(page);
+      if (!wt || wt.length < 200) continue;
+      const boxes = extractFootballBoxes(wt);
+      if (!boxes.length) continue;
+      const docs = boxes
+        .map((fields, idx) =>
+          toMatchDoc(fields, {
+            stage,
+            stageLabel,
+            externalId: `${stage}-${idx + 1}`,
+          }),
+        )
+        .filter((d): d is MatchDoc => d != null);
+      if (docs.length > 0) return docs;
+    } catch {
+      // Page doesn't exist or network error — try next variant
+    }
+  }
+  return [];
+}
+
+// Parse the combined knockout-stage article. Handles level-2 AND level-3
+// headings so the parser survives page restructures where rounds are nested
+// under a top-level "Results" section.
 async function parseKnockoutPage(): Promise<MatchDoc[]> {
-  const wt = await fetchWikitext("2026_FIFA_World_Cup_knockout_stage");
-  const sectionRe = /^==\s*([^=]+?)\s*==\s*$/gm;
-  const sections: Array<{ label: string; start: number }> = [];
+  let wt: string;
+  try {
+    wt = await fetchWikitext("2026_FIFA_World_Cup_knockout_stage");
+  } catch {
+    return [];
+  }
+
+  // Match headings at level 2–4 using a backreference so === only closes ===.
+  const sectionRe = /^(={2,4})\s*([^=]+?)\s*\1\s*$/gm;
+  const sections: Array<{ label: string; start: number; level: number }> = [];
   let sm: RegExpExecArray | null;
   while ((sm = sectionRe.exec(wt)) !== null) {
-    sections.push({ label: sm[1].trim(), start: sm.index });
+    sections.push({ label: sm[2].trim(), start: sm.index, level: sm[1].length });
   }
+
   const out: MatchDoc[] = [];
+  const stageCounters = new Map<string, number>();
+
   for (let i = 0; i < sections.length; i++) {
-    const { label, start } = sections[i];
+    const { label, start, level } = sections[i];
     const cfg = KNOCKOUT_STAGES[label];
     if (!cfg) continue;
-    const end = sections[i + 1]?.start ?? wt.length;
+
+    // Segment ends at the NEXT heading of same-or-higher level so boxes inside
+    // sub-headings (level 3/4) are included in the parent section's segment.
+    let end = wt.length;
+    for (let j = i + 1; j < sections.length; j++) {
+      if (sections[j].level <= level) { end = sections[j].start; break; }
+    }
+
     const segment = wt.slice(start, end);
     const boxes = extractFootballBoxes(segment);
-    boxes.forEach((fields, idx) => {
+    boxes.forEach((fields) => {
+      const count = (stageCounters.get(cfg.stage) ?? 0) + 1;
+      stageCounters.set(cfg.stage, count);
       const doc = toMatchDoc(fields, {
         stage: cfg.stage,
         stageLabel: cfg.stageLabel,
-        externalId: `${cfg.stage}-${idx + 1}`,
+        externalId: `${cfg.stage}-${count}`,
       });
       if (doc) out.push(doc);
     });
@@ -544,29 +596,81 @@ async function parseKnockoutPage(): Promise<MatchDoc[]> {
   return out;
 }
 
-async function parseFinalPage(): Promise<MatchDoc[]> {
-  try {
-    const wt = await fetchWikitext("2026_FIFA_World_Cup_final");
-    const boxes = extractFootballBoxes(wt);
-    return boxes
-      .map((fields, idx) =>
-        toMatchDoc(fields, {
-          stage: "FINAL",
-          stageLabel: "Final",
-          externalId: `FINAL-${idx + 1}`,
-        }),
-      )
-      .filter((d): d is MatchDoc => d != null);
-  } catch {
-    return [];
-  }
-}
+// Page-name candidates for each knockout round. Wikipedia naming varies by
+// year and editor; we try the most common variants in order and use the first
+// that returns boxes. The combined knockout-stage page is the final fallback.
+const ROUND_PAGE_CANDIDATES: Array<{
+  pages: string[];
+  stage: MatchStage;
+  stageLabel: string;
+}> = [
+  {
+    pages: ["2026_FIFA_World_Cup_round_of_32"],
+    stage: "ROUND_OF_32",
+    stageLabel: "Dieciseisavos",
+  },
+  {
+    pages: ["2026_FIFA_World_Cup_round_of_16"],
+    stage: "ROUND_OF_16",
+    stageLabel: "Octavos",
+  },
+  {
+    pages: [
+      "2026_FIFA_World_Cup_quarter-finals",
+      "2026_FIFA_World_Cup_quarter_finals",
+      "2026_FIFA_World_Cup_quarterfinals",
+    ],
+    stage: "QUARTER_FINALS",
+    stageLabel: "Cuartos",
+  },
+  {
+    pages: [
+      "2026_FIFA_World_Cup_semi-finals",
+      "2026_FIFA_World_Cup_semi_finals",
+      "2026_FIFA_World_Cup_semifinals",
+    ],
+    stage: "SEMI_FINALS",
+    stageLabel: "Semifinal",
+  },
+  {
+    pages: [
+      "2026_FIFA_World_Cup_third_place_play-off",
+      "2026_FIFA_World_Cup_third-place_play-off",
+      "2026_FIFA_World_Cup_third_place_playoff",
+    ],
+    stage: "THIRD_PLACE",
+    stageLabel: "Tercer puesto",
+  },
+  {
+    pages: ["2026_FIFA_World_Cup_final"],
+    stage: "FINAL",
+    stageLabel: "Final",
+  },
+];
 
 export async function fetchMatchesFromWikipedia(): Promise<MatchDoc[]> {
   const groupResults = await Promise.all(
     GROUP_KEYS.map((letter) => parseGroupPage(letter)),
   );
-  const knockout = await parseKnockoutPage();
-  const final = await parseFinalPage();
-  return [...groupResults.flat(), ...knockout, ...final];
+
+  // Fetch each round from its dedicated sub-page in parallel.
+  // Fall back to the combined knockout page only for rounds not found.
+  const [subpageResults, fromMainPage] = await Promise.all([
+    Promise.all(
+      ROUND_PAGE_CANDIDATES.map((cfg) =>
+        fetchKnockoutRound(cfg.pages, cfg.stage, cfg.stageLabel),
+      ),
+    ),
+    parseKnockoutPage(),
+  ]);
+
+  const stagesFoundInSubpages = new Set(
+    subpageResults.flat().map((d) => d.stage),
+  );
+  // Use main-page results only for stages that sub-pages didn't cover.
+  const mainFallback = fromMainPage.filter(
+    (d) => !stagesFoundInSubpages.has(d.stage),
+  );
+
+  return [...groupResults.flat(), ...subpageResults.flat(), ...mainFallback];
 }

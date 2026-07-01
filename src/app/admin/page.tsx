@@ -120,6 +120,9 @@ export default function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [diagnosing, setDiagnosing] = useState(false);
   const [diag, setDiag] = useState<DiagnoseResult | null>(null);
+  const [debuggingWiki, setDebuggingWiki] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [wikiDebug, setWikiDebug] = useState<any | null>(null);
 
   const [adminMatches, setAdminMatches] = useState<AdminMatch[]>([]);
   const [scoreMatchId, setScoreMatchId] = useState("");
@@ -435,6 +438,33 @@ export default function AdminPage() {
       });
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function handleDebugWiki() {
+    if (!savedToken) {
+      setBanner({ kind: "err", text: "Guarda primero tu token de admin." });
+      return;
+    }
+    setDebuggingWiki(true);
+    try {
+      const res = await fetch("/api/admin/debug-wikipedia", {
+        headers: { authorization: `Bearer ${savedToken}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBanner({ kind: "err", text: data.error ?? `Error ${res.status}` });
+        return;
+      }
+      setWikiDebug(data);
+      setBanner(null);
+    } catch (err) {
+      setBanner({
+        kind: "err",
+        text: err instanceof Error ? err.message : "Error desconocido",
+      });
+    } finally {
+      setDebuggingWiki(false);
     }
   }
 
@@ -891,7 +921,37 @@ export default function AdminPage() {
             >
               {diagnosing ? "Revisando…" : "Diagnóstico de puntos"}
             </button>
+            <button
+              type="button"
+              onClick={handleDebugWiki}
+              disabled={debuggingWiki || !savedToken}
+              className="h-11 border border-[var(--line)] px-5 text-sm font-semibold uppercase tracking-[0.18em] transition hover:border-[var(--brand)] hover:text-[var(--brand)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {debuggingWiki ? "Leyendo…" : "Debug Wikipedia"}
+            </button>
           </div>
+
+          {wikiDebug && (
+            <div className="mt-4 border border-[var(--line)] bg-[var(--background)] p-4 text-xs font-mono">
+              <p className="mb-2 font-bold uppercase tracking-widest text-[var(--foreground-muted)]">Wikipedia — estructura de páginas</p>
+              {(wikiDebug.results ?? []).map((r: { page: string; ok: boolean; length?: number; totalBoxes?: number; sections?: {label: string; level: number}[]; error?: string }) => (
+                <div key={r.page} className="mb-3 border-b border-dashed border-[var(--line)] pb-2">
+                  <p className={r.ok ? "text-green-700" : "text-red-600"}>
+                    {r.ok ? "✓" : "✗"} <b>{r.page}</b>
+                    {r.ok && ` — ${r.length} chars, ${r.totalBoxes} boxes`}
+                    {!r.ok && `: ${r.error}`}
+                  </p>
+                  {r.ok && r.sections && r.sections.length > 0 && (
+                    <ul className="mt-1 pl-4">
+                      {r.sections.map((s, i) => (
+                        <li key={i}>{`${"=".repeat(s.level)} ${s.label} ${"=".repeat(s.level)}`}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {diag && (
             <div className="mt-6 border border-[var(--line)] bg-[var(--background)] p-5 text-sm">
