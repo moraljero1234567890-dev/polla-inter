@@ -102,6 +102,8 @@ export default function DashboardPage() {
     );
   }
 
+  const tournamentLocked = Date.now() >= new Date("2026-06-11T19:00:00Z").getTime();
+
   const total = session.attemptsAllowed;
   const filledAttempts = new Map(attempts.map((a) => [a.attempt, a]));
   const rows: AttemptSummary[] = [];
@@ -255,7 +257,7 @@ export default function DashboardPage() {
                         className="inline-flex h-11 items-center justify-center bg-[var(--brand)] px-5 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-[var(--brand-dark)]"
                       >
                         {completed
-                          ? "Editar"
+                          ? tournamentLocked ? "Ver boleta" : "Editar"
                           : row.groupCount > 0
                             ? "Continuar"
                             : "Comenzar"}

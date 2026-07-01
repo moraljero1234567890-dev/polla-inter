@@ -300,8 +300,11 @@ function withinTournamentWindow(matches: MatchDoc[], now: number): boolean {
   }
   if (!Number.isFinite(earliest) || !Number.isFinite(latest)) return false;
   const DAY = 24 * 60 * 60 * 1000;
-  // Start polling 3h before the first match, keep going 1 day past the last.
-  return now >= earliest - 3 * 60 * 60 * 1000 && now <= latest + DAY;
+  // Start polling 3h before the first match, keep going 60 days past the last
+  // stored match. The "last stored match" only reflects what the DB has — if
+  // knockout matches haven't been fetched yet the DB only shows group stage
+  // dates, so 1 day would shut off the refresh before R16/QF/SF/Final complete.
+  return now >= earliest - 3 * 60 * 60 * 1000 && now <= latest + 60 * DAY;
 }
 
 // Throttled, lock-guarded auto-refresh meant to be called from read paths

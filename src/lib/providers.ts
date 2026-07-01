@@ -20,6 +20,8 @@ function mapFootballDataStage(stage: string): MatchStage {
   switch (stage) {
     case "GROUP_STAGE":
       return "GROUP_STAGE";
+    case "ROUND_OF_32":
+      return "ROUND_OF_32";
     case "LAST_16":
     case "ROUND_OF_16":
       return "ROUND_OF_16";

@@ -208,6 +208,15 @@ function unwrapTemplates(input: string): string {
     (_m, y, mo, d) =>
       `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
   );
+  // Score templates: {{Fs|2|1}} or {{score|2|1}} → 2–1
+  s = s.replace(
+    /\{\{[Ff]s\s*\|\s*(\d+)\s*\|\s*(\d+)[^}]*\}\}/g,
+    (_, a, b) => `${a}–${b}`,
+  );
+  s = s.replace(
+    /\{\{[Ss]core\s*\|\s*(\d+)\s*\|\s*(\d+)[^}]*\}\}/g,
+    (_, a, b) => `${a}–${b}`,
+  );
   s = s.replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, (_m, _link, label) => label);
   s = s.replace(/\[\[([^\]]+)\]\]/g, (_m, label) => label);
   s = s.replace(/&nbsp;/g, " ");
@@ -254,7 +263,10 @@ function splitTemplateArgs(body: string): Record<string, string> {
 
 function extractFootballBoxes(wikitext: string): Record<string, string>[] {
   const out: Record<string, string>[] = [];
-  const startRe = /\{\{#invoke:football box\|main\b/g;
+  // Match both module invocation form and direct template form.
+  // Negative lookahead (?!\s*\d) avoids matching {{Football box 3}} (group tables).
+  const startRe =
+    /\{\{(?:#invoke:football box\|main\b|[Ff]ootball [Bb]ox(?!\s*\d))/g;
   let m: RegExpExecArray | null;
   while ((m = startRe.exec(wikitext)) !== null) {
     let i = m.index + 2;
@@ -277,7 +289,11 @@ function extractFootballBoxes(wikitext: string): Record<string, string>[] {
     }
     if (end < 0) continue;
     const body = wikitext.slice(m.index + 2, end - 2);
-    const stripped = body.replace(/^#invoke:football box\|main\|?/i, "");
+    // Strip the template/invoke prefix so splitTemplateArgs only sees key=value pairs.
+    const stripped = body.replace(
+      /^(?:#invoke:football box\|main|[Ff]ootball [Bb]ox)\|?/i,
+      "",
+    );
     out.push(splitTemplateArgs(stripped));
   }
   return out;
@@ -327,9 +343,11 @@ function parseScore(raw: string): {
 } {
   const s = unwrapTemplates(raw).trim();
   if (!s || /^score link/i.test(s)) return { home: 0, away: 0, status: "SCHEDULED" };
-  const m = /(\d{1,2})\s*[–\-]\s*(\d{1,2})/.exec(s);
+  // All common dash/minus variants: en-dash, em-dash, minus sign, hyphen
+  const DASH = "[–—\\-−]";
+  const m = new RegExp(`(\\d{1,2})\\s*${DASH}\\s*(\\d{1,2})`).exec(s);
   if (!m) return { home: 0, away: 0, status: "SCHEDULED" };
-  const pen = /\((\d+)\s*[–\-]\s*(\d+)[^)]*\)/.exec(s);
+  const pen = new RegExp(`\\((\\d+)\\s*${DASH}\\s*(\\d+)[^)]*\\)`).exec(s);
   return {
     home: Number(m[1]),
     away: Number(m[2]),
@@ -447,8 +465,15 @@ const KNOCKOUT_STAGES: Record<string, { stage: MatchStage; stageLabel: string }>
   "Round of 32": { stage: "ROUND_OF_32", stageLabel: "Dieciseisavos" },
   "Round of 16": { stage: "ROUND_OF_16", stageLabel: "Octavos" },
   Quarterfinals: { stage: "QUARTER_FINALS", stageLabel: "Cuartos" },
+  "Quarter-finals": { stage: "QUARTER_FINALS", stageLabel: "Cuartos" },
+  "Quarter-final": { stage: "QUARTER_FINALS", stageLabel: "Cuartos" },
   Semifinals: { stage: "SEMI_FINALS", stageLabel: "Semifinal" },
+  "Semi-finals": { stage: "SEMI_FINALS", stageLabel: "Semifinal" },
+  "Semi-final": { stage: "SEMI_FINALS", stageLabel: "Semifinal" },
   "Match for third place": { stage: "THIRD_PLACE", stageLabel: "Tercer puesto" },
+  "Third place play-off": { stage: "THIRD_PLACE", stageLabel: "Tercer puesto" },
+  "Third-place play-off": { stage: "THIRD_PLACE", stageLabel: "Tercer puesto" },
+  "Third place playoff": { stage: "THIRD_PLACE", stageLabel: "Tercer puesto" },
   Final: { stage: "FINAL", stageLabel: "Final" },
 };
 

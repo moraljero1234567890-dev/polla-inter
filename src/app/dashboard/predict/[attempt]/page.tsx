@@ -221,10 +221,23 @@ function ScoreInput({
   useEffect(() => {
     setText(value == null || value === undefined ? "" : String(value));
   }, [value]);
+
   const sizeCls =
     size === "sm"
       ? "h-9 w-9 text-base"
       : "h-12 w-14 text-xl";
+
+  if (disabled) {
+    return (
+      <span
+        aria-label={ariaLabel}
+        className={`${sizeCls} flex items-center justify-center border border-[var(--line)] bg-[var(--surface)] font-mono font-black tabular-nums text-[var(--foreground-muted)]`}
+      >
+        {value != null ? String(value) : "—"}
+      </span>
+    );
+  }
+
   return (
     <input
       type="number"
@@ -233,7 +246,6 @@ function ScoreInput({
       max={20}
       aria-label={ariaLabel}
       value={text}
-      disabled={disabled}
       onChange={(e) => {
         const raw = e.target.value.replace(/[^0-9]/g, "");
         setText(raw);
@@ -248,7 +260,7 @@ function ScoreInput({
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === "Tab") onCommit?.();
       }}
-      className={`${sizeCls} border border-[var(--line)] bg-white text-center font-mono font-black tabular-nums outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/20 disabled:cursor-not-allowed disabled:bg-[var(--surface)] disabled:text-[var(--foreground-muted)]`}
+      className={`${sizeCls} border border-[var(--line)] bg-white text-center font-mono font-black tabular-nums outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand)]/20`}
     />
   );
 }
@@ -504,36 +516,44 @@ function BracketCard({
           <p className="font-mono text-[9px] uppercase tracking-[0.25em] text-[var(--foreground-muted)]">
             Gana en penales
           </p>
-          <div className="mt-1 flex gap-1">
-            <button
-              type="button"
-              onClick={() => onPickPenalty("home")}
-              disabled={disabled}
-              className={
-                "flex-1 truncate border px-1.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-60 " +
-                (pick.penaltyWinner === "home"
-                  ? "border-[var(--brand)] bg-[var(--brand)] text-white"
-                  : "border-[var(--line)] hover:border-[var(--brand)]")
-              }
-              title={home.name}
-            >
-              {home.name}
-            </button>
-            <button
-              type="button"
-              onClick={() => onPickPenalty("away")}
-              disabled={disabled}
-              className={
-                "flex-1 truncate border px-1.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-60 " +
-                (pick.penaltyWinner === "away"
-                  ? "border-[var(--brand)] bg-[var(--brand)] text-white"
-                  : "border-[var(--line)] hover:border-[var(--brand)]")
-              }
-              title={away.name}
-            >
-              {away.name}
-            </button>
-          </div>
+          {disabled ? (
+            <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-[0.12em]">
+              {pick.penaltyWinner === "home"
+                ? home.name
+                : pick.penaltyWinner === "away"
+                  ? away.name
+                  : "—"}
+            </p>
+          ) : (
+            <div className="mt-1 flex gap-1">
+              <button
+                type="button"
+                onClick={() => onPickPenalty("home")}
+                className={
+                  "flex-1 truncate border px-1.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition " +
+                  (pick.penaltyWinner === "home"
+                    ? "border-[var(--brand)] bg-[var(--brand)] text-white"
+                    : "border-[var(--line)] hover:border-[var(--brand)]")
+                }
+                title={home.name}
+              >
+                {home.name}
+              </button>
+              <button
+                type="button"
+                onClick={() => onPickPenalty("away")}
+                className={
+                  "flex-1 truncate border px-1.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition " +
+                  (pick.penaltyWinner === "away"
+                    ? "border-[var(--brand)] bg-[var(--brand)] text-white"
+                    : "border-[var(--line)] hover:border-[var(--brand)]")
+                }
+                title={away.name}
+              >
+                {away.name}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
