@@ -493,6 +493,20 @@ function toMatchDoc(
   };
 }
 
+function pairExternalId(
+  stage: MatchStage,
+  fields: Record<string, string>,
+  fallbackIdx: number,
+): string {
+  const home = teamFromField(fields.team1 ?? "");
+  const away = teamFromField(fields.team2 ?? "");
+  if (home?.code && away?.code) {
+    const codes = [home.code, away.code].sort();
+    return `${stage}-${codes[0]}-${codes[1]}`;
+  }
+  return `${stage}-tbd-${fallbackIdx}`;
+}
+
 const GROUP_KEYS = [
   "A",
   "B",
@@ -581,7 +595,7 @@ async function fetchKnockoutRound(
           toMatchDoc(fields, {
             stage,
             stageLabel,
-            externalId: `${stage}-${idx + 1}`,
+            externalId: pairExternalId(stage, fields, idx + 1),
           }),
         )
         .filter((d): d is MatchDoc => d != null);
@@ -616,30 +630,26 @@ async function parseKnockoutPage(): Promise<MatchDoc[]> {
   const stageCounters = new Map<string, number>();
 
   for (let i = 0; i < sections.length; i++) {
-    const { label, start, level } = sections[i];
-    const cfg = KNOCKOUT_STAGES[label];
-    if (!cfg) continue;
+  const { label, start, level } = sections[i];
+  const cfg = KNOCKOUT_STAGES[label];
+  if (!cfg) continue;
 
-    // Segment ends at the NEXT heading of same-or-higher level so boxes inside
-    // sub-headings (level 3/4) are included in the parent section's segment.
-    let end = wt.length;
-    for (let j = i + 1; j < sections.length; j++) {
-      if (sections[j].level <= level) { end = sections[j].start; break; }
-    }
-
-    const segment = wt.slice(start, end);
-    const boxes = extractFootballBoxes(segment);
-    boxes.forEach((fields) => {
-      const count = (stageCounters.get(cfg.stage) ?? 0) + 1;
-      stageCounters.set(cfg.stage, count);
-      const doc = toMatchDoc(fields, {
-        stage: cfg.stage,
-        stageLabel: cfg.stageLabel,
-        externalId: `${cfg.stage}-${count}`,
-      });
-      if (doc) out.push(doc);
-    });
+  let end = wt.length;
+  for (let j = i + 1; j < sections.length; j++) {
+    if (sections[j].level <= level) { end = sections[j].start; break; }
   }
+
+  const segment = wt.slice(start, end);
+  const boxes = extractFootballBoxes(segment);
+  boxes.forEach((fields, idx) => {
+    const doc = toMatchDoc(fields, {
+      stage: cfg.stage,
+      stageLabel: cfg.stageLabel,
+      externalId: pairExternalId(cfg.stage, fields, idx + 1),
+    });
+    if (doc) out.push(doc);
+  });
+}
   return out;
 }
 
