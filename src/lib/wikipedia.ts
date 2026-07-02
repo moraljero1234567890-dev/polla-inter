@@ -217,6 +217,8 @@ function unwrapTemplates(input: string): string {
     /\{\{[Ss]core\s*\|\s*(\d+)\s*\|\s*(\d+)[^}]*\}\}/g,
     (_, a, b) => `${a}–${b}`,
   );
+  // {{score link|Page name|0–1}} or {{score link|Page|TBD}} → the score/text part
+  s = s.replace(/\{\{[Ss]core [Ll]ink\|[^|{}]+\|([^|}]*)\}\}/g, (_, sc) => sc.trim());
   s = s.replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, (_m, _link, label) => label);
   s = s.replace(/\[\[([^\]]+)\]\]/g, (_m, label) => label);
   s = s.replace(/&nbsp;/g, " ");
@@ -266,7 +268,7 @@ function extractFootballBoxes(wikitext: string): Record<string, string>[] {
   // Match both module invocation form and direct template form.
   // Negative lookahead (?!\s*\d) avoids matching {{Football box 3}} (group tables).
   const startRe =
-    /\{\{(?:#invoke:football box\|main\b|[Ff]ootball [Bb]ox(?!\s*\d))/g;
+    /\{\{(?:#invoke:[Ff]ootball [Bb]ox\|main\b|[Ff]ootball [Bb]ox(?!\s*\d))/g;
   let m: RegExpExecArray | null;
   while ((m = startRe.exec(wikitext)) !== null) {
     let i = m.index + 2;
@@ -450,6 +452,19 @@ function toMatchDoc(
   };
   const { utcDate, date, time } = combineUtc(localDate, local);
   const scoreInfo = parseScore(fields.score ?? "");
+  // Penalty shootout sometimes lives in a dedicated pen-score field instead of
+  // embedded in the score string (e.g. "1–1 (a.e.t.)" + "pen-score = 4–2").
+  if (
+    scoreInfo.status === "FINISHED" &&
+    scoreInfo.penaltyHome == null &&
+    fields["pen-score"]
+  ) {
+    const penInfo = parseScore(fields["pen-score"]);
+    if (penInfo.status === "FINISHED") {
+      scoreInfo.penaltyHome = penInfo.home;
+      scoreInfo.penaltyAway = penInfo.away;
+    }
+  }
   const { venue, city } = parseStadium(fields.stadium ?? "");
 
   return {

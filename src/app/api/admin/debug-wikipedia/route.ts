@@ -29,7 +29,7 @@ async function fetchWikitext(page: string): Promise<string> {
 }
 
 function countBoxes(wt: string): number {
-  const re = /\{\{(?:#invoke:football box\|main|[Ff]ootball [Bb]ox(?!\s*\d))/g;
+  const re = /\{\{(?:#invoke:[Ff]ootball [Bb]ox\|main|[Ff]ootball [Bb]ox(?!\s*\d))/g;
   let count = 0;
   while (re.exec(wt) !== null) count++;
   return count;
