@@ -514,6 +514,51 @@ export default function AdminPage() {
     }
   }
 
+  async function handleCreateMatch() {
+    if (!savedToken) {
+      setBanner({ kind: "err", text: "Guarda primero tu token de admin." });
+      return;
+    }
+    if (!cmHome.trim() || !cmAway.trim()) {
+      setBanner({ kind: "err", text: "Ingresa los códigos de ambos equipos (ej: de, py, br, ar)." });
+      return;
+    }
+    setSavingCm(true);
+    setCmResult(null);
+    try {
+      const res = await fetch("/api/admin/create-match", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${savedToken}`,
+        },
+        body: JSON.stringify({
+          stage: cmStage,
+          homeCode: cmHome.trim().toLowerCase(),
+          awayCode: cmAway.trim().toLowerCase(),
+          homeScore: cmHomeScore !== "" ? Number(cmHomeScore) : null,
+          awayScore: cmAwayScore !== "" ? Number(cmAwayScore) : null,
+          penaltyHome: cmPenH !== "" ? Number(cmPenH) : null,
+          penaltyAway: cmPenA !== "" ? Number(cmPenA) : null,
+          date: cmDate || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBanner({ kind: "err", text: data.error ?? `Error ${res.status}` });
+        return;
+      }
+      const label = data.match + (data.penalties ? ` (pen: ${data.penalties})` : "");
+      setCmResult(label);
+      setBanner({ kind: "ok", text: `Guardado: ${label}` });
+      loadAdminMatches();
+    } catch (err) {
+      setBanner({ kind: "err", text: err instanceof Error ? err.message : "Error desconocido" });
+    } finally {
+      setSavingCm(false);
+    }
+  }
+
   const loadAdminMatches = useCallback(async () => {
     try {
       const res = await fetch("/api/matches");
@@ -977,14 +1022,58 @@ export default function AdminPage() {
               <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
                 Diagnóstico
               </h3>
-              <ul className="mt-3 grid gap-2">
+
+              {/* Knockout stage health table */}
+              {diag.knockoutByStage && (
+                <div className="mt-4">
+                  <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-[var(--foreground-muted)]">
+                    Eliminatorias en la base de datos
+                  </p>
+                  <table className="mt-2 w-full border border-[var(--line)] text-xs">
+                    <thead>
+                      <tr className="bg-[var(--surface)] font-mono text-[9px] uppercase tracking-widest">
+                        <th className="px-2 py-1 text-left">Ronda</th>
+                        <th className="px-2 py-1 text-center">En DB</th>
+                        <th className="px-2 py-1 text-center">Terminados</th>
+                        <th className="px-2 py-1 text-left">Resultados</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(diag.knockoutByStage).map(([stage, entry]) => (
+                        <tr key={stage} className="border-t border-[var(--line)]">
+                          <td className="px-2 py-1 font-medium">{entry.label}</td>
+                          <td className={`px-2 py-1 text-center font-bold ${entry.total === 0 ? "text-red-500" : ""}`}>
+                            {entry.total}
+                          </td>
+                          <td className={`px-2 py-1 text-center font-bold ${
+                            entry.finished === 0 && entry.total === 0 ? "text-red-500"
+                            : entry.finished === 0 ? "text-amber-600"
+                            : "text-emerald-700"
+                          }`}>
+                            {entry.finished}
+                          </td>
+                          <td className="px-2 py-1 font-mono text-[10px] text-[var(--foreground-soft)]">
+                            {entry.matches.length > 0
+                              ? entry.matches.map(m =>
+                                  `${m.home} ${m.score ?? "?"} ${m.away}${m.penalties ? ` (p:${m.penalties})` : ""}`
+                                ).join(" · ")
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="mt-1 font-mono text-[9px] text-[var(--foreground-muted)]">
+                    Rojo = sin datos · Amarillo = hay partidos pero ninguno terminado · Verde = hay resultados
+                  </p>
+                </div>
+              )}
+
+              <ul className="mt-4 grid gap-2">
                 <li>
-                  Partidos: <b>{diag.summary.matches}</b> · Terminados de grupos:{" "}
+                  Partidos totales: <b>{diag.summary.matches}</b> · Grupos terminados:{" "}
                   <b>{diag.summary.finishedGroupMatches}</b> · Predicciones:{" "}
-                  <b>{diag.summary.predictions}</b>
-                </li>
-                <li>
-                  Fuente de datos:{" "}
+                  <b>{diag.summary.predictions}</b> · Fuente:{" "}
                   <b>
                     {Object.entries(diag.summary.bySource)
                       .map(([s, n]) => `${s} (${n})`)
@@ -998,16 +1087,10 @@ export default function AdminPage() {
                       : ""
                   }
                 >
-                  Partidos terminados <b>sin marcador</b> (dan 0 puntos):{" "}
+                  Terminados <b>sin marcador</b> (dan 0 puntos):{" "}
                   <b>{diag.diagnostics.finishedWithoutScore.count}</b>
                   {diag.diagnostics.finishedWithoutScore.count > 0 && (
-                    <span>
-                      {" "}
-                      —{" "}
-                      {diag.diagnostics.finishedWithoutScore.items
-                        .map((i) => i.teams)
-                        .join("; ")}
-                    </span>
+                    <span> — {diag.diagnostics.finishedWithoutScore.items.map((i) => i.teams).join("; ")}</span>
                   )}
                 </li>
                 <li
@@ -1017,52 +1100,150 @@ export default function AdminPage() {
                       : "text-emerald-700"
                   }
                 >
-                  Predicciones de grupos <b>vinculadas</b> a un partido real:{" "}
+                  Predicciones de grupos vinculadas:{" "}
                   <b>
                     {diag.diagnostics.groupKeyAlignment.matchedKeys}/
                     {diag.diagnostics.groupKeyAlignment.totalKeys}
                   </b>
                   {diag.diagnostics.groupKeyAlignment.unmatchedKeys > 0 && (
-                    <span>
-                      {" "}
-                      — ⚠️ hay{" "}
-                      {diag.diagnostics.groupKeyAlignment.unmatchedKeys}{" "}
-                      predicciones huérfanas (sus IDs no coinciden con los
-                      partidos actuales). Ejemplo de claves:{" "}
-                      <code>
-                        {diag.diagnostics.groupKeyAlignment.sampleUnmatchedKeys.join(
-                          ", ",
-                        )}
-                      </code>{" "}
-                      vs partidos:{" "}
-                      <code>
-                        {diag.diagnostics.groupKeyAlignment.sampleCurrentGroupIds.join(
-                          ", ",
-                        )}
-                      </code>
-                    </span>
+                    <span> — {diag.diagnostics.groupKeyAlignment.unmatchedKeys} huérfanas</span>
                   )}
                 </li>
-                <li
-                  className={
-                    diag.diagnostics.knockoutCodeAlignment
-                      .predCodesMissingInMatches.length > 0
-                      ? "text-amber-600"
-                      : ""
-                  }
-                >
-                  Códigos de equipo de eliminatorias que no aparecen en los
-                  partidos:{" "}
-                  <b>
-                    {
-                      diag.diagnostics.knockoutCodeAlignment
-                        .predCodesMissingInMatches.length
-                    }
-                  </b>
-                </li>
+                {diag.diagnostics.knockoutCodeAlignment.predCodesMissingInMatches.length > 0 && (
+                  <li className="text-amber-600">
+                    Códigos en predicciones eliminatorias sin partido en DB:{" "}
+                    <b>{diag.diagnostics.knockoutCodeAlignment.predCodesMissingInMatches.join(", ")}</b>
+                  </li>
+                )}
               </ul>
             </div>
           )}
+
+          {/* ── NEW: manual knockout match creation ── */}
+          <div className="mt-8 border-t border-[var(--line)] pt-6">
+            <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
+              Crear / registrar partido de eliminatorias
+            </h3>
+            <p className="mt-2 text-sm text-[var(--foreground-soft)]">
+              Usa esto cuando Wikipedia no trae un partido de eliminatorias. Ingresa los
+              códigos ISO en minúscula (de, py, br, ar, us, mx, fr, es, hr, nl…). El
+              partido queda marcado como manual y no se sobreescribe en recargas.
+            </p>
+            <div className="mt-4 grid gap-3">
+              <div className="flex flex-wrap gap-3">
+                <label className="text-xs">
+                  <span className="block text-[var(--foreground-muted)]">Ronda</span>
+                  <select
+                    value={cmStage}
+                    onChange={(e) => setCmStage(e.target.value)}
+                    className="mt-1 h-11 border border-[var(--line)] bg-white px-3 text-sm"
+                  >
+                    <option value="ROUND_OF_32">Dieciseisavos (R32)</option>
+                    <option value="ROUND_OF_16">Octavos (R16)</option>
+                    <option value="QUARTER_FINALS">Cuartos de final</option>
+                    <option value="SEMI_FINALS">Semifinales</option>
+                    <option value="THIRD_PLACE">Tercer puesto</option>
+                    <option value="FINAL">Final</option>
+                  </select>
+                </label>
+                <label className="text-xs">
+                  <span className="block text-[var(--foreground-muted)]">Fecha (opc.)</span>
+                  <input
+                    type="date"
+                    value={cmDate}
+                    onChange={(e) => setCmDate(e.target.value)}
+                    className="mt-1 h-11 border border-[var(--line)] px-3 text-sm"
+                  />
+                </label>
+              </div>
+
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-xs">
+                  <span className="block text-[var(--foreground-muted)]">Local (código)</span>
+                  <input
+                    type="text"
+                    value={cmHome}
+                    onChange={(e) => setCmHome(e.target.value.toLowerCase())}
+                    placeholder="de"
+                    maxLength={8}
+                    className="mt-1 h-11 w-20 border border-[var(--line)] px-2 text-center text-base font-bold uppercase"
+                  />
+                </label>
+                <label className="text-xs">
+                  <span className="block text-[var(--foreground-muted)]">Goles</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={cmHomeScore}
+                    onChange={(e) => setCmHomeScore(e.target.value)}
+                    className="mt-1 h-11 w-16 border border-[var(--line)] px-2 text-center text-lg font-bold"
+                  />
+                </label>
+                <span className="pb-3 text-lg font-bold">–</span>
+                <label className="text-xs">
+                  <span className="block text-[var(--foreground-muted)]">Goles</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={cmAwayScore}
+                    onChange={(e) => setCmAwayScore(e.target.value)}
+                    className="mt-1 h-11 w-16 border border-[var(--line)] px-2 text-center text-lg font-bold"
+                  />
+                </label>
+                <label className="text-xs">
+                  <span className="block text-[var(--foreground-muted)]">Visitante (código)</span>
+                  <input
+                    type="text"
+                    value={cmAway}
+                    onChange={(e) => setCmAway(e.target.value.toLowerCase())}
+                    placeholder="py"
+                    maxLength={8}
+                    className="mt-1 h-11 w-20 border border-[var(--line)] px-2 text-center text-base font-bold uppercase"
+                  />
+                </label>
+
+                <div className="ml-2 flex items-end gap-2 border-l border-[var(--line)] pl-4">
+                  <label className="text-[10px] uppercase tracking-wide text-[var(--foreground-muted)]">
+                    <span className="block">Pen. local (opc.)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={cmPenH}
+                      onChange={(e) => setCmPenH(e.target.value)}
+                      placeholder="—"
+                      className="mt-1 h-11 w-14 border border-[var(--line)] px-2 text-center"
+                    />
+                  </label>
+                  <span className="pb-3">–</span>
+                  <label className="text-[10px] uppercase tracking-wide text-[var(--foreground-muted)]">
+                    <span className="block">Pen. visit.</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={cmPenA}
+                      onChange={(e) => setCmPenA(e.target.value)}
+                      placeholder="—"
+                      className="mt-1 h-11 w-14 border border-[var(--line)] px-2 text-center"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={handleCreateMatch}
+                  disabled={savingCm || !savedToken || !cmHome.trim() || !cmAway.trim()}
+                  className="h-11 bg-[var(--brand)] px-5 text-sm font-semibold uppercase tracking-[0.18em] text-white transition hover:bg-[var(--brand-dark)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {savingCm ? "Guardando…" : "Guardar partido"}
+                </button>
+                {cmResult && (
+                  <span className="font-bold text-emerald-700">✓ {cmResult}</span>
+                )}
+              </div>
+            </div>
+          </div>
 
           <div className="mt-8 border-t border-[var(--line)] pt-6">
             <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.28em] text-[var(--foreground-muted)]">
