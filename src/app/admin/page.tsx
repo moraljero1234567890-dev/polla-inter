@@ -93,6 +93,10 @@ type DiagnoseResult = {
       count: number;
       items: { id: string; stage: string; teams: string }[];
     };
+    knockoutDrawsNoPenalty: {
+      count: number;
+      items: { id: string; stage: string; teams: string; score: string; manualScore: boolean }[];
+    };
     groupKeyAlignment: {
       totalKeys: number;
       matchedKeys: number;
@@ -1091,6 +1095,24 @@ export default function AdminPage() {
                   <b>{diag.diagnostics.finishedWithoutScore.count}</b>
                   {diag.diagnostics.finishedWithoutScore.count > 0 && (
                     <span> — {diag.diagnostics.finishedWithoutScore.items.map((i) => i.teams).join("; ")}</span>
+                  )}
+                </li>
+                <li
+                  className={
+                    diag.diagnostics.knockoutDrawsNoPenalty.count > 0
+                      ? "text-red-600 font-semibold"
+                      : ""
+                  }
+                >
+                  Eliminatorias <b>empatadas sin penales</b> (el ganador es desconocido — puntos de avance no se cuentan):{" "}
+                  <b>{diag.diagnostics.knockoutDrawsNoPenalty.count}</b>
+                  {diag.diagnostics.knockoutDrawsNoPenalty.count > 0 && (
+                    <span>
+                      {" "}— {diag.diagnostics.knockoutDrawsNoPenalty.items.map(
+                        (i) => `${i.teams} (${i.score})`,
+                      ).join("; ")}
+                      {" "}→ usa <em>Editar marcador</em> para agregar el resultado de penales
+                    </span>
                   )}
                 </li>
                 <li

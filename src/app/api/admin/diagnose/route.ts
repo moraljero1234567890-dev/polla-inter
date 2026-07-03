@@ -44,6 +44,27 @@ export async function GET(request: NextRequest) {
       teams: `${m.home?.name} vs ${m.away?.name}`,
     }));
 
+  // Knockout matches that finished level (draw) but have no penalty score.
+  // The winner is unknown so those teams are silently excluded from r32Winners /
+  // r16Winners / etc., which silently drops every user's advancement points for
+  // that match. Fix: set the penalty score via /api/admin/set-score.
+  const knockoutDrawsNoPenalty = matches
+    .filter(
+      (m) =>
+        m.stage !== "GROUP_STAGE" &&
+        m.status === "FINISHED" &&
+        m.score?.fullTime != null &&
+        m.score.fullTime.home === m.score.fullTime.away &&
+        m.score.penalties == null,
+    )
+    .map((m) => ({
+      id: m._id,
+      stage: m.stage,
+      teams: `${m.home?.name} vs ${m.away?.name}`,
+      score: `${m.score!.fullTime!.home}-${m.score!.fullTime!.away}`,
+      manualScore: (m as { manualScore?: boolean }).manualScore ?? false,
+    }));
+
   // Do prediction groupScores keys still point at real match _ids?
   const matchIds = new Set(matches.map((m) => m._id));
   let totalKeys = 0;
@@ -154,6 +175,7 @@ export async function GET(request: NextRequest) {
     knockoutByStage,
     diagnostics: {
       finishedWithoutScore: { count: finishedNoScore.length, items: finishedNoScore },
+      knockoutDrawsNoPenalty: { count: knockoutDrawsNoPenalty.length, items: knockoutDrawsNoPenalty },
       groupKeyAlignment: {
         totalKeys,
         matchedKeys,
