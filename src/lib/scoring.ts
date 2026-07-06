@@ -405,39 +405,30 @@ function scoreSinglePrediction(
   if (p.knockout.final) scoreBracketStage([p.knockout.final], ctx.finalMatchups);
 
   // ── TEAM ADVANCEMENT: correct teams reaching each round ──
-  const collectWinners = (picks: KnockoutPick[]): Set<string> => {
-    const s = new Set<string>();
+  // Each team is credited at most once per stage (deduplicated by code).
+  // The bonus is also added to the matching pick's per-pick points so the
+  // results page badge reflects the full points earned for that prediction.
+  const creditAdvancement = (
+    picks: KnockoutPick[],
+    winnerSet: Set<string>,
+    pts: number,
+    counter: "advanceR16" | "advanceQf" | "advanceSf" | "advanceFinal",
+  ) => {
+    const credited = new Set<string>();
     for (const pick of picks) {
       const w = pickedWinnerCode(pick);
-      if (w) s.add(w);
+      if (!w || credited.has(w) || !winnerSet.has(w)) continue;
+      credited.add(w);
+      br.knockout[counter] += 1;
+      br.knockout.points += pts;
+      if (knockout[pick.matchId]) knockout[pick.matchId].points += pts;
     }
-    return s;
   };
 
-  for (const code of collectWinners(p.knockout.r32)) {
-    if (ctx.knock.r32Winners.has(code)) {
-      br.knockout.advanceR16 += 1;
-      br.knockout.points += POINTS.ADVANCE_R16;
-    }
-  }
-  for (const code of collectWinners(p.knockout.r16)) {
-    if (ctx.knock.r16Winners.has(code)) {
-      br.knockout.advanceQf += 1;
-      br.knockout.points += POINTS.ADVANCE_QF;
-    }
-  }
-  for (const code of collectWinners(p.knockout.qf)) {
-    if (ctx.knock.qfWinners.has(code)) {
-      br.knockout.advanceSf += 1;
-      br.knockout.points += POINTS.ADVANCE_SF;
-    }
-  }
-  for (const code of collectWinners(p.knockout.sf)) {
-    if (ctx.knock.sfWinners.has(code)) {
-      br.knockout.advanceFinal += 1;
-      br.knockout.points += POINTS.ADVANCE_FINAL;
-    }
-  }
+  creditAdvancement(p.knockout.r32, ctx.knock.r32Winners, POINTS.ADVANCE_R16, "advanceR16");
+  creditAdvancement(p.knockout.r16, ctx.knock.r16Winners, POINTS.ADVANCE_QF, "advanceQf");
+  creditAdvancement(p.knockout.qf, ctx.knock.qfWinners, POINTS.ADVANCE_SF, "advanceSf");
+  creditAdvancement(p.knockout.sf, ctx.knock.sfWinners, POINTS.ADVANCE_FINAL, "advanceFinal");
 
   // ── FINAL POSITIONS ──
   if (ctx.knock.champion && p.champion?.code === ctx.knock.champion) {
