@@ -452,17 +452,20 @@ function toMatchDoc(
   };
   const { utcDate, date, time } = combineUtc(localDate, local);
   const scoreInfo = parseScore(fields.score ?? "");
-  // Penalty shootout sometimes lives in a dedicated pen-score field instead of
-  // embedded in the score string (e.g. "1–1 (a.e.t.)" + "pen-score = 4–2").
-  if (
-    scoreInfo.status === "FINISHED" &&
-    scoreInfo.penaltyHome == null &&
-    fields["pen-score"]
-  ) {
-    const penInfo = parseScore(fields["pen-score"]);
-    if (penInfo.status === "FINISHED") {
-      scoreInfo.penaltyHome = penInfo.home;
-      scoreInfo.penaltyAway = penInfo.away;
+  // Penalty shootout lives in a dedicated field. Wikipedia uses two field
+  // names depending on the template version: "pen-score" (older pages) and
+  // "penaltyscore" (newer pages, including the 2026 Round of 32 article).
+  // We must check both — missing this means draws-that-went-to-pens are
+  // stored without a penalty winner, so those teams never appear in the
+  // r32Winners / r16Winners sets and advancement points are silently lost.
+  if (scoreInfo.status === "FINISHED" && scoreInfo.penaltyHome == null) {
+    const penRaw = fields["pen-score"] ?? fields["penaltyscore"];
+    if (penRaw) {
+      const penInfo = parseScore(penRaw);
+      if (penInfo.status === "FINISHED") {
+        scoreInfo.penaltyHome = penInfo.home;
+        scoreInfo.penaltyAway = penInfo.away;
+      }
     }
   }
   const { venue, city } = parseStadium(fields.stadium ?? "");
